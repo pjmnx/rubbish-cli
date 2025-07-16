@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"path"
+	"rubbish/journal"
 
 	"github.com/go-ini/ini"
 )
@@ -18,6 +20,7 @@ type Config struct {
 		DaysInAdvance int  `ini:"days_in_advance"`
 		Timeout       int  `ini:"timeout"`
 	} `ini:"notifications"`
+	Journal *journal.Journal
 }
 
 func Load(paths []string) (*Config, error) {
@@ -53,6 +56,14 @@ func Load(paths []string) (*Config, error) {
 	err = cfg.MapTo(config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to map configuration: %w", err)
+	}
+
+	config.Journal = &journal.Journal{
+		Path: path.Join(config.ContainerPath, ".journal"),
+	}
+
+	if err := config.Journal.Load(); err != nil {
+		return nil, fmt.Errorf("failed to load journal: %w", err)
 	}
 
 	return config, nil
