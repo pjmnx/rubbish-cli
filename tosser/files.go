@@ -9,6 +9,26 @@ import (
 	"time"
 )
 
+// TossFile moves a regular file to the trash container with metadata tracking.
+// It validates that the target is indeed a file (not a directory), handles
+// name conflicts by appending timestamps, and records the operation in the journal.
+//
+// The function performs these operations:
+// 1. Validates the target is a file and not a directory
+// 2. Determines the destination path in the trash container
+// 3. Handles naming conflicts by appending timestamps
+// 4. Moves the file to the trash container
+// 5. Records metadata in the journal for tracking and restoration
+//
+// If a file with the same name already exists in trash, it appends a timestamp
+// to create a unique name, ensuring no data loss.
+//
+// Parameters:
+//   - file: The path to the file that should be moved to trash
+//   - cfg: Application configuration containing container path and journal
+//
+// Returns an error if the target is not a file, if file operations fail,
+// or if journal recording encounters issues.
 func TossFile(file string, cfg *config.Config) error {
 	info, err := os.Stat(file)
 	if err != nil {

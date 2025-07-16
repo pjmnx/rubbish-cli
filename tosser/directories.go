@@ -9,6 +9,26 @@ import (
 	"time"
 )
 
+// TossDirectory moves a directory and all its contents to the trash container.
+// It validates that the target is indeed a directory, handles name conflicts
+// by appending timestamps, and records the operation in the journal for tracking.
+//
+// The function performs these operations:
+// 1. Validates the target is a directory and not a file
+// 2. Determines the destination path in the trash container
+// 3. Handles naming conflicts by appending timestamps to directory names
+// 4. Moves the entire directory tree to the trash container
+// 5. Records metadata in the journal for tracking and restoration
+//
+// If a directory with the same name already exists in trash, it appends a timestamp
+// to create a unique name, ensuring no data loss or conflicts.
+//
+// Parameters:
+//   - item: The path to the directory that should be moved to trash
+//   - cfg: Application configuration containing container path and journal
+//
+// Returns an error if the target is not a directory, if directory operations fail,
+// or if journal recording encounters issues.
 func TossDirectory(item string, cfg *config.Config) error {
 	info, err := os.Stat(item)
 	if err != nil {

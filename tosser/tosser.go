@@ -7,6 +7,25 @@ import (
 	"rubbish/config"
 )
 
+// Command handles the "toss" command which moves files and directories to trash.
+// It processes command-line arguments to determine retention time and validates
+// each file before moving it to the trash container. The function supports
+// custom retention periods via the --retention flag.
+//
+// The command performs the following operations:
+// 1. Parses command-line flags for retention time override
+// 2. Validates that files/directories exist and are accessible
+// 3. Determines whether each item is a file or directory
+// 4. Delegates to appropriate tossing functions
+// 5. Updates the journal with metadata about tossed items
+// 6. Provides feedback about the operation results
+//
+// Parameters:
+//   - args: Command-line arguments passed to the toss command
+//   - cfg: Application configuration containing default settings and journal
+//
+// Returns an error if no files are specified, if any file cannot be accessed,
+// or if the tossing operation fails for any item.
 func Command(args []string, cfg *config.Config) error {
 	fs := flag.NewFlagSet("toss", flag.ExitOnError)
 

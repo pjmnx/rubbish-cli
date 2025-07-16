@@ -11,6 +11,17 @@ import (
 	"rubbish/tosser"
 )
 
+// loadConfig loads the application configuration from system and user configuration files.
+// It attempts to load a system-wide configuration first, then appends user-specific
+// configuration from the user's home directory, allowing for personalized overrides.
+//
+// The configuration loading follows this hierarchy:
+// 1. System default: /etc/rubbish/config.cfg
+// 2. User override: ~/.config/rubbish.cfg
+//
+// Returns a fully initialized Config struct with default values and user overrides
+// applied, or an error if the user home directory cannot be determined or if
+// configuration loading fails.
 func loadConfig() (*config.Config, error) {
 	// Define the paths for the configuration files
 	defaultConfigPath := "/etc/rubbish/config.cfg"
@@ -30,12 +41,27 @@ func loadConfig() (*config.Config, error) {
 	return cfg, nil
 }
 
+// Command represents a command that can be executed by the rubbish utility.
+// It encapsulates the command name, description, and the function that
+// implements the command's functionality. This structure enables a clean
+// command dispatch system with consistent error handling.
 type Command struct {
-	Name        string
+	// Name is the command identifier used on the command line
+	Name string
+
+	// Description is a brief explanation of what the command does,
+	// displayed in help output
 	Description string
-	Run         func(args []string, cfg *config.Config) error
+
+	// Run is the function that implements the command's functionality.
+	// It receives command arguments and configuration, returning an error
+	// if the operation fails.
+	Run func(args []string, cfg *config.Config) error
 }
 
+// commands defines all available commands in the rubbish utility.
+// Each command is mapped to its corresponding implementation function
+// from the appropriate module (tosser, restorer, cleaner, status).
 var commands = []Command{
 	{
 		Name:        "toss",
@@ -64,6 +90,23 @@ var commands = []Command{
 	},
 }
 
+// showHelp displays comprehensive help information for the rubbish utility.
+// It provides usage instructions, available commands, practical examples,
+// and current configuration settings to help users understand and effectively
+// use the trash management system.
+//
+// The help output includes:
+// - Basic usage syntax
+// - List of all available commands with descriptions
+// - Practical examples for common operations
+// - Current configuration values for reference
+// - Additional resources for more information
+//
+// Parameters:
+//   - args: Command-line arguments (unused in help display)
+//   - cfg: Application configuration used to display current settings
+//
+// Returns nil as help display operations do not fail.
 func showHelp(args []string, cfg *config.Config) error {
 	fmt.Println("Rubbish - A command-line trash management utility")
 	fmt.Println()
@@ -101,6 +144,25 @@ func showHelp(args []string, cfg *config.Config) error {
 	return nil
 }
 
+// main is the entry point for the rubbish trash management utility.
+// It orchestrates the entire application flow including configuration loading,
+// directory validation, command parsing, and execution.
+//
+// The main function performs these key operations:
+// 1. Loads configuration from system and user files
+// 2. Validates and creates the trash container directory if needed
+// 3. Parses command-line arguments to determine the requested operation
+// 4. Dispatches to the appropriate command handler
+// 5. Handles errors with colored output and appropriate exit codes
+//
+// The function ensures proper error handling and user feedback throughout
+// the application lifecycle, using ANSI color codes for enhanced readability
+// of error messages.
+//
+// Exit codes:
+//   - 0: Successful operation
+//   - 1: Configuration error, directory creation failure, invalid command,
+//     or command execution error
 func main() {
 	cfg, err := loadConfig()
 	if err != nil {
