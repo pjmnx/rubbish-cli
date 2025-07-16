@@ -34,6 +34,7 @@ func TossDirectory(item string, cfg *config.Config) error {
 	if err != nil {
 		return fmt.Errorf("error getting file info for %s: %w", item, err)
 	}
+	// Check if the item is a directory
 	if !info.IsDir() {
 		return fmt.Errorf("cannot toss a file using TossDirectory: %s", item)
 	}
@@ -46,6 +47,7 @@ func TossDirectory(item string, cfg *config.Config) error {
 		fmt.Printf("Directory already exists in the trash, renaming to: %s\n", destination)
 	}
 
+	// Record the directory in the journal for tracking
 	go func() {
 		if err := cfg.Journal.Add(basename, item, cfg.SwipeTime); err != nil {
 			fmt.Fprintf(os.Stderr, "error adding directory to journal: %v\n", err)
