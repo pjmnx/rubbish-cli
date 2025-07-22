@@ -7,6 +7,20 @@ import (
 	"rubbish/config"
 )
 
+var Flags = flag.NewFlagSet("toss", flag.ExitOnError)
+var retentionTime int
+
+func init() {
+	Flags.IntVar(&retentionTime, "retention", 0, "Time to retain the file before it is wiped out from the filesystem.")
+	Flags.IntVar(&retentionTime, "r", 0, "Time to retain the file before it is wiped out from the filesystem.")
+
+	Flags.Usage = func() {
+		fmt.Println("Usage: rubbish toss [options] <file1> <file2> ...")
+		fmt.Println("Options:")
+		Flags.PrintDefaults()
+	}
+}
+
 // Command handles the "toss" command which moves files and directories to trash.
 // It processes command-line arguments to determine retention time and validates
 // each file before moving it to the trash container. The function supports
@@ -27,17 +41,19 @@ import (
 // Returns an error if no files are specified, if any file cannot be accessed,
 // or if the tossing operation fails for any item.
 func Command(args []string, cfg *config.Config) error {
-	fs := flag.NewFlagSet("toss", flag.ExitOnError)
-
-	fs.IntVar(&cfg.SwipeTime, "retention", cfg.SwipeTime, "Time to wait before swiping the file(s) from the trash (in days)")
-
-	fs.Parse(args)
-
-	if len(fs.Args()) == 0 {
+	if len(Flags.Args()) == 0 {
 		return fmt.Errorf("no files or directory specified to toss")
 	}
 
-	for _, file := range fs.Args() {
+	if Flags.Parsed() {
+		if retentionTime > 0 {
+			cfg.WipeoutTime = retentionTime
+		}
+	}
+
+	var tosser func(string, *config.Config) error
+
+	for _, file := range Flags.Args() {
 		if file == "" {
 			return fmt.Errorf("no files specified to toss")
 		}
@@ -46,8 +62,6 @@ func Command(args []string, cfg *config.Config) error {
 		if err != nil {
 			return fmt.Errorf("error getting file info for %s: %w", file, err)
 		}
-
-		var tosser func(string, *config.Config) error
 
 		if fileinfo.IsDir() {
 			tosser = TossDirectory
@@ -67,6 +81,6 @@ func Command(args []string, cfg *config.Config) error {
 		fmt.Printf("Total tossed files (local): %d\n", count)
 	}
 
-	fmt.Fprintf(os.Stdout, "\033[32mTossing\033[0m files %s to trash with a wait time of %d days.\n", fs.Args(), cfg.SwipeTime)
+	fmt.Fprintf(os.Stdout, "\033[32mTossing\033[0m files %s to trash with a wait time of %d days.\n", Flags.Args(), cfg.WipeoutTime)
 	return nil
 }
