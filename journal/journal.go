@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	badger "github.com/dgraph-io/badger/v4"
 )
@@ -28,7 +29,8 @@ func (j *Journal) Load() error {
 	j.Path = filepath.Clean(j.Path)
 
 	if j.db == nil {
-		j.db, err = badger.Open(badger.DefaultOptions(j.Path))
+
+		j.db, err = badger.Open(badger.DefaultOptions(j.Path).WithLoggingLevel(badger.ERROR))
 
 		if err != nil {
 			return fmt.Errorf("error opening badger database: %w", err)
@@ -52,6 +54,7 @@ func (m *MetaData) marshalBinary() ([]byte, error) {
 // Returns an error if the database close operation fails.
 func (j *Journal) Close() error {
 	if j.db != nil {
+		j.db.Sync()
 		return j.db.Close()
 	}
 	return nil
@@ -64,16 +67,16 @@ func (j *Journal) Close() error {
 // Parameters:
 //   - item: A unique identifier for the trashed item
 //   - file: The original file path before it was moved to trash
-//   - swipeTime: The number of days before the item can be permanently deleted
+//   - wipeoutTime: The number of days before the item can be permanently deleted
 //
 // Returns an error if the absolute path cannot be determined, metadata generation
 // fails, or the database operation encounters an issue.
-func (j *Journal) Add(item string, file string, swipeTime int) error {
+func (j *Journal) Add(item string, file string, wipeoutTime int) error {
 	path, err := filepath.Abs(file)
 	if err != nil {
 		return fmt.Errorf("error getting absolute path for file %s: %w", file, err)
 	}
-	metadata := GenerateMetadata(item, path, swipeTime)
+	metadata := GenerateMetadata(item, path, wipeoutTime)
 	if metadata == nil {
 		return fmt.Errorf("error generating metadata for item: %s", item)
 	}
@@ -277,4 +280,64 @@ func (j *Journal) GetSize() (int64, error) {
 		return 0, err
 	}
 	return size, nil
+}
+
+func (j *Journal) GetContainerItems(container string) ([]*MetaData, error) {
+	if j.db == nil {
+		return nil, fmt.Errorf("journal database is not initialized")
+	}
+
+	metadataList, err := j.GetAllItems()
+	if err != nil {
+		return nil, fmt.Errorf("error retrieving all items: %w", err)
+	}
+
+	var containerItems []*MetaData
+	for _, metadata := range metadataList {
+		if strings.HasPrefix(metadata.Origin, container) {
+			containerItems = append(containerItems, metadata)
+		}
+	}
+
+	if len(containerItems) == 0 {
+		return nil, nil
+	}
+	return containerItems, nil
+}
+
+func (j *Journal) GetAllItems() ([]*MetaData, error) {
+	if j.db == nil {
+		return nil, fmt.Errorf("journal database is not initialized")
+	}
+	var metadataList []*MetaData
+	// Retrieve all items from the journal database
+	// This method iterates through all stored items and returns a slice
+	// containing metadata for every item currently in the trash.
+	// Useful for displaying trash contents and generating status reports.
+	// Returns a slice of MetaData pointers for all items in the journal,
+	// or an error if the database is not initialized or if any unmarshaling
+	// operation fails during iteration.
+
+	err := j.db.View(func(txn *badger.Txn) error {
+		it := txn.NewIterator(badger.DefaultIteratorOptions)
+		defer it.Close()
+
+		for it.Rewind(); it.Valid(); it.Next() {
+			item := it.Item()
+			var metadata MetaData
+			err := item.Value(func(val []byte) error {
+				return json.Unmarshal(val, &metadata)
+			})
+			if err != nil {
+				return fmt.Errorf("error unmarshaling metadata: %w", err)
+			}
+			metadataList = append(metadataList, &metadata)
+		}
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+	return metadataList, nil
 }

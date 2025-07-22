@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"path"
 	"rubbish/journal"
 
@@ -13,23 +14,20 @@ import (
 // including file retention policies, notification settings, and paths.
 // The configuration supports loading from multiple files with user overrides.
 type Config struct {
-	// SwipeTime is the default number of days files remain in trash before
+	// WipeoutTime is the default number of days files remain in trash before
 	// they become eligible for permanent deletion
-	SwipeTime int `ini:"swipe_time"`
+	WipeoutTime int `ini:"wipeout_time"`
 
 	// ContainerPath is the absolute path where trashed files are stored
 	ContainerPath string `ini:"container_path"`
 
 	// MaxRetention is the maximum number of days any file can remain in trash
-	// regardless of individual swipe time settings
+	// regardless of individual wipeout time settings
 	MaxRetention int `ini:"max_retention"`
 
 	// CleanupInterval is how often (in days) the cleanup process should run
 	// to remove expired files from trash
 	CleanupInterval int `ini:"cleanup_interval"`
-
-	// LogRetention is the number of days to keep log files before removing them
-	LogRetention int `ini:"log_retention"`
 
 	// Notification contains settings for system notifications about pending deletions
 	Notification struct {
@@ -45,6 +43,8 @@ type Config struct {
 
 	// Journal is the database instance used to track metadata for trashed items
 	Journal *journal.Journal
+
+	WorkingDir string // workingDir is the current working directory of the application
 }
 
 // Load reads configuration from the specified INI file paths and initializes
@@ -75,11 +75,10 @@ func Load(paths []string) (*Config, error) {
 
 	// Creating a default configuration if the file is empty
 	config := &Config{
-		SwipeTime:       30,
+		WipeoutTime:     30,
 		ContainerPath:   "~/.local/share/rubbish",
 		MaxRetention:    365,
-		CleanupInterval: 7,
-		LogRetention:    30,
+		CleanupInterval: 3,
 		Notification: struct {
 			Enabled       bool `ini:"enabled"`
 			DaysInAdvance int  `ini:"days_in_advance"`
@@ -102,6 +101,11 @@ func Load(paths []string) (*Config, error) {
 
 	if err := config.Journal.Load(); err != nil {
 		return nil, fmt.Errorf("failed to load journal: %w", err)
+	}
+
+	config.WorkingDir, err = os.Getwd()
+	if err != nil {
+		return nil, fmt.Errorf("error getting current working directory: %w", err)
 	}
 
 	return config, nil

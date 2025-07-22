@@ -13,17 +13,17 @@ type MetaData struct {
 	// of the file or directory that was moved to trash
 	Item string
 
-	// Abs is the absolute path of the original file or directory before it was
+	// Origin is the absolute path of the original file or directory before it was
 	// moved to trash, used for restoration purposes
-	Abs string
+	Origin string
 
 	// Type indicates the kind of filesystem object (file, directory, symlink, etc.)
 	// using the defined type constants
 	Type uint
 
-	// SwipeTime is the number of days the item should remain in trash before
+	// WipeoutTime is the number of days the item should remain in trash before
 	// it becomes eligible for permanent deletion
-	SwipeTime int
+	WipeoutTime int
 
 	// TossedTime is the Unix timestamp (seconds since epoch) when the item
 	// was originally moved to trash
@@ -92,16 +92,16 @@ func getType(path string) uint {
 // Parameters:
 //   - item: Unique identifier for the trashed item (typically the filename)
 //   - path: Absolute path to the original location of the file/directory
-//   - swipeTime: Number of days the item should remain in trash before cleanup
+//   - wipeoutTime: Number of days the item should remain in trash before cleanup
 //
 // Returns a pointer to a newly created MetaData struct with all fields populated.
 // Note: The Type field is determined by examining the 'item' parameter, not the 'path'.
-func GenerateMetadata(item string, path string, swipeTime int) *MetaData {
+func GenerateMetadata(item string, path string, wipeoutTime int) *MetaData {
 	return &MetaData{
-		Item:       item,
-		Abs:        path,
-		Type:       getType(item),
-		SwipeTime:  swipeTime,
-		TossedTime: time.Now().Unix(),
+		Item:        item,
+		Origin:      path,
+		Type:        getType(item),
+		WipeoutTime: wipeoutTime,
+		TossedTime:  time.Now().Unix(),
 	}
 }

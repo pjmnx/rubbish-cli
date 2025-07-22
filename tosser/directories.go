@@ -49,13 +49,13 @@ func TossDirectory(item string, cfg *config.Config) error {
 
 	// Record the directory in the journal for tracking
 	go func() {
-		if err := cfg.Journal.Add(basename, item, cfg.SwipeTime); err != nil {
-			fmt.Fprintf(os.Stderr, "error adding directory to journal: %v\n", err)
+		if err := cfg.Journal.Add(filepath.Base(destination), item, cfg.WipeoutTime); err != nil {
+			fmt.Printf("error adding directory to journal: %v\n", err)
 		}
 	}()
 
 	if err := os.Rename(item, destination); err != nil {
-		if errj := cfg.Journal.Delete(basename); errj != nil {
+		if errj := cfg.Journal.Delete(filepath.Base(destination)); errj != nil {
 			return fmt.Errorf("error deleting journal entry for %s: %w", item, errj)
 		}
 		return fmt.Errorf("error moving directory %s to trash: %w", item, err)

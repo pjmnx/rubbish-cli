@@ -29,36 +29,37 @@ import (
 //
 // Returns an error if the target is not a file, if file operations fail,
 // or if journal recording encounters issues.
-func TossFile(file string, cfg *config.Config) error {
-	info, err := os.Stat(file)
+func TossFile(item string, cfg *config.Config) error {
+	info, err := os.Stat(item)
 	if err != nil {
-		return fmt.Errorf("error getting file info for %s: %w", file, err)
+		return fmt.Errorf("error getting file info for %s: %w", item, err)
 	}
 	// Check if the item is a file
 	if info.IsDir() {
-		return fmt.Errorf("cannot toss a directory using TossFile: %s", file)
+		return fmt.Errorf("cannot toss a directory using TossFile: %s", item)
 	}
 
-	basename := filepath.Base(file)
+	basename := filepath.Base(item)
 	destination := path.Join(cfg.ContainerPath, basename)
 
 	if _, err := os.Stat(destination); err == nil {
 		destination = path.Join(cfg.ContainerPath, basename+"_"+time.Now().Format("20060102150405"))
 		fmt.Printf("File already exists in the trash, renaming to: %s\n", destination)
 	}
+
 	// Record the file in the journal for tracking
 	go func() {
-		if err := cfg.Journal.Add(filepath.Base(destination), file, cfg.SwipeTime); err != nil {
-			fmt.Fprintf(os.Stderr, "error adding file to journal: %v\n", err)
+		if err := cfg.Journal.Add(filepath.Base(destination), item, cfg.WipeoutTime); err != nil {
+			fmt.Printf("error adding file to journal: %v\n", err)
 		}
 	}()
 
-	if err := os.Rename(file, destination); err != nil {
+	if err := os.Rename(item, destination); err != nil {
 		if errj := cfg.Journal.Delete(filepath.Base(destination)); errj != nil {
-			return fmt.Errorf("error deleting journal entry for %s: %w", file, errj)
+			return fmt.Errorf("error deleting journal entry for %s: %w", item, errj)
 		}
-		return fmt.Errorf("error moving file %s to trash: %w", file, err)
+		return fmt.Errorf("error moving file %s to trash: %w", item, err)
 	}
-	fmt.Printf("File %s moved to trash at %s\n", file, destination)
+	fmt.Printf("File %s moved to trash at %s\n", item, destination)
 	return nil
 }
