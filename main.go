@@ -90,8 +90,8 @@ func init() {
 		{
 			Name:        "restore",
 			Description: "Restore files from the trash",
-			Run:         restorer.Command,                             // Assuming restorer.Command is a function that handles the "restore" command
-			Flags:       flag.NewFlagSet("restore", flag.ExitOnError), // Optional
+			Run:         restorer.Command, // Assuming restorer.Command is a function that handles the "restore" command
+			Flags:       restorer.Flags,
 		},
 		{
 			Name:        "cleanup",
