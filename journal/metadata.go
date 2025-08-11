@@ -105,3 +105,13 @@ func GenerateMetadata(item string, path string, wipeoutTime int) *MetaData {
 		TossedTime:  time.Now().Unix(),
 	}
 }
+
+func (m *MetaData) TossElapsed() time.Duration {
+	// Calculate the elapsed time since the item was tossed to trash
+	return time.Since(time.Unix(m.TossedTime, 0))
+}
+
+func (m *MetaData) IsWipeable() bool {
+	// Check if the item is eligible for wipeout based on its WipeoutTime
+	return m.TossElapsed().Hours()/24.0 >= float64(m.WipeoutTime)
+}
