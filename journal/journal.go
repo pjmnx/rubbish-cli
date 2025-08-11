@@ -60,7 +60,7 @@ func (j *Journal) Close() error {
 	return nil
 }
 
-// Add creates a new journal entry for a file that has been moved to trash.
+// AddFileByName creates a new journal entry for a file that has been moved to trash.
 // It generates metadata for the specified item and file path, then stores
 // it in the journal database for tracking purposes.
 //
@@ -71,7 +71,7 @@ func (j *Journal) Close() error {
 //
 // Returns an error if the absolute path cannot be determined, metadata generation
 // fails, or the database operation encounters an issue.
-func (j *Journal) Add(item string, file string, wipeoutTime int) error {
+func (j *Journal) AddFileByName(item string, file string, wipeoutTime int) error {
 	path, err := filepath.Abs(file)
 	if err != nil {
 		return fmt.Errorf("error getting absolute path for file %s: %w", file, err)
@@ -340,4 +340,12 @@ func (j *Journal) GetAllItems() ([]*MetaData, error) {
 		return nil, err
 	}
 	return metadataList, nil
+}
+
+func (j *Journal) AddRecord(record *MetaData) error {
+	if j.db == nil {
+		return fmt.Errorf("journal database is not initialized")
+	}
+
+	return j.register(record)
 }

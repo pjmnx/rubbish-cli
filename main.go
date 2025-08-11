@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"rubbish/cleaner"
 	"rubbish/config"
 	"rubbish/restorer"
 	"rubbish/status"
 	"rubbish/tosser"
+	"rubbish/wipe"
 )
 
 // loadConfig loads the application configuration from system and user configuration files.
@@ -94,10 +94,10 @@ func init() {
 			Flags:       restorer.Flags,
 		},
 		{
-			Name:        "cleanup",
-			Description: "Clean up the trash",
-			Run:         cleaner.Command,                              // Assuming cleaner.Command is a function that handles the "cleanup" command
-			Flags:       flag.NewFlagSet("cleanup", flag.ExitOnError), // Optional
+			Name:        "wipe",
+			Description: "Clean up the rubbish",
+			Run:         wipe.Command, // Assuming cleaner.Command is a function that handles the "wipe" command
+			Flags:       wipe.Flags,   // Optional
 		},
 		{
 			Name:        "status",
