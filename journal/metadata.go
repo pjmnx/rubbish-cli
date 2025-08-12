@@ -115,3 +115,8 @@ func (m *MetaData) IsWipeable() bool {
 	// Check if the item is eligible for wipeout based on its WipeoutTime
 	return m.TossElapsed().Hours()/24.0 >= float64(m.WipeoutTime)
 }
+
+func (m *MetaData) RemainingTime() time.Duration {
+	// Calculate the remaining time before the item is eligible for wipeout
+	return (time.Duration(m.WipeoutTime*24) * time.Hour) - m.TossElapsed()
+}
