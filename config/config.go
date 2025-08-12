@@ -76,7 +76,7 @@ func Load(paths []string) (*Config, error) {
 	// Creating a default configuration if the file is empty
 	config := &Config{
 		WipeoutTime:     30,
-		ContainerPath:   "~/.local/share/rubbish",
+		ContainerPath:   ".local/share/rubbish",
 		MaxRetention:    365,
 		CleanupInterval: 3,
 		Notification: struct {
@@ -95,6 +95,8 @@ func Load(paths []string) (*Config, error) {
 		return nil, fmt.Errorf("failed to map configuration: %w", err)
 	}
 
+	config.ContainerPath = normalizePath(config.ContainerPath)
+
 	config.Journal = &journal.Journal{
 		Path: path.Join(config.ContainerPath, ".journal"),
 	}
@@ -109,4 +111,22 @@ func Load(paths []string) (*Config, error) {
 	}
 
 	return config, nil
+}
+
+// Expands the user's home directory if it's a relative path and returns the absolute path to the container directory.
+func normalizePath(container_path string) string {
+	if path.IsAbs(container_path) {
+		return container_path
+	}
+
+	userHomeDir, err := os.UserHomeDir()
+	if err != nil {
+		return container_path
+	}
+
+	if container_path[0] == '~' {
+		container_path = container_path[1:]
+	}
+
+	return path.Join(userHomeDir, container_path)
 }
