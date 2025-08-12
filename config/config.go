@@ -95,7 +95,7 @@ func Load(paths []string) (*Config, error) {
 		return nil, fmt.Errorf("failed to map configuration: %w", err)
 	}
 
-	config.ContainerPath = normalizePath(config.ContainerPath)
+	config.ContainerPath = NormalizePath(config.ContainerPath)
 
 	config.Journal = &journal.Journal{
 		Path: path.Join(config.ContainerPath, ".journal"),
@@ -114,7 +114,7 @@ func Load(paths []string) (*Config, error) {
 }
 
 // Expands the user's home directory if it's a relative path and returns the absolute path to the container directory.
-func normalizePath(container_path string) string {
+func NormalizePath(container_path string) string {
 	if path.IsAbs(container_path) {
 		return container_path
 	}
