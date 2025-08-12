@@ -7,7 +7,6 @@ import (
 	"rubbish/config"
 	"rubbish/journal"
 	"strings"
-	"time"
 )
 
 var Flags = flag.NewFlagSet("status", flag.ExitOnError)
@@ -54,7 +53,7 @@ func Command(args []string, cfg *config.Config) error {
 	var err error
 
 	if globalFlag {
-		fmt.Println("Showing global status of the trash...")
+		fmt.Println("Showing global rubbish status")
 		records, err = cfg.Journal.GetAllItems()
 		if err != nil {
 			return fmt.Errorf("error retrieving global items from journal: %w", err)
@@ -73,34 +72,34 @@ func Command(args []string, cfg *config.Config) error {
 	}
 
 	toWipeCount := 0
-	// Count the number of items that are ready to be wiped out
-	go func(records []*journal.MetaData, count *int) {
-		for _, record := range records {
-			daysSinceTossed := int(time.Since(time.Unix(record.TossedTime, 0)).Hours() / 24)
-			if record.WipeoutTime-daysSinceTossed <= 0 {
-				*count++
-			}
-		}
-	}(records, &toWipeCount)
-
-	var message string
 
 	for _, record := range records {
+
 		if !globalFlag {
-			message = fmt.Sprintf("Rubbish: %s, Tossed Time: %s, Days to Wipe: %d\n",
-				strings.Replace(strings.Replace(record.Origin, path.Base(record.Origin), record.Item, 1), cfg.WorkingDir+"/", "", 1),
-				time.Since(time.Unix(record.TossedTime, 1)).String(),
-				record.WipeoutTime-int(time.Since(time.Unix(record.TossedTime, 0)).Hours()/24))
-		} else {
-			message = fmt.Sprintf("Rubbish: %s, Tossed Time: %s, Days to Wipe: %d\n",
-				record.Item,
-				time.Since(time.Unix(record.TossedTime, 0)).String(),
-				record.WipeoutTime-int(time.Since(time.Unix(record.TossedTime, 0)).Hours()/24))
+			// Update the item name to reflect that is relative to the working directory
+			record.Item = strings.Replace(strings.Replace(record.Origin, path.Base(record.Origin), record.Item, 1), cfg.WorkingDir+"/", "", 1)
 		}
-		fmt.Print(message)
+
+		if record.IsWipeable() {
+			toWipeCount++
+		}
+		fmt.Println("\t" + String(record))
 	}
 
-	fmt.Printf("Total items ready to be wiped out: %d\n", toWipeCount)
+	fmt.Printf("Wipable count: %d\n", toWipeCount)
 
 	return nil
+}
+
+func String(record *journal.MetaData) string {
+	const msg = "Item:%s | Tossed:%v | WipeIn:%s\n"
+
+	remaining := record.RemainingTime()
+	var remain_msg string
+	if remaining.Hours() >= 24.0 {
+		remain_msg = fmt.Sprintf("%.01fd", remaining.Hours()/24.0)
+	} else {
+		remain_msg = fmt.Sprintf("%v", remaining)
+	}
+	return fmt.Sprintf(msg, record.Item, record.TossElapsed(), remain_msg)
 }
