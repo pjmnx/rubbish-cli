@@ -10,6 +10,9 @@ import (
 	"rubbish/status"
 	"rubbish/tosser"
 	"rubbish/wipe"
+	"runtime/debug"
+	"slices"
+	"strings"
 )
 
 // loadConfig loads the application configuration from system and user configuration files.
@@ -54,109 +57,100 @@ type Command struct {
 	// displayed in help output
 	Description string
 
-	// Run is the function that implements the command's functionality.
+	// Action is the function that implements the command's functionality.
 	// It receives command arguments and configuration, returning an error
 	// if the operation fails.
-	Run func(args []string, cfg *config.Config) error
+	Action func(args []string, cfg *config.Config) error
 
-	Flags *flag.FlagSet // Optional flags for the command
+	Options *flag.FlagSet // Optional flags for the command
 }
 
 // commands defines all available commands in the rubbish utility.
 // Each command is mapped to its corresponding implementation function
 // from the appropriate module (tosser, restorer, cleaner, status).
-var commands []Command
-var helpCommand *Command
+var (
+	cmdToss *Command = &Command{
+		Name:        "toss",
+		Description: "Move files to the trash",
+		Action:      tosser.Command, // Assuming tosser.Command is a function that handles the "toss" command
+		Options:     tosser.Flags,   // Optional
+	}
+	cmdRestore *Command = &Command{
+		Name:        "restore",
+		Description: "Restore files from the trash",
+		Action:      restorer.Command, // Assuming restorer.Command is a function that handles the "restore" command
+		Options:     restorer.Flags,
+	}
+	cmdWipe *Command = &Command{
+		Name:        "wipe",
+		Description: "Clean up the rubbish",
+		Action:      wipe.Command, // Assuming cleaner.Command is a function that handles the "wipe" command
+		Options:     wipe.Flags,   // Optional
+	}
+	// cmdStatus is the command for showing the status of the trash
+	cmdStatus *Command = &Command{
+		Name:        "status",
+		Description: "Show the status of the trash",
+		Action:      status.Command, // Assuming status.Command is a function that handles the "status" command
+		Options:     status.Flags,
+	}
+	cmdHelp *Command = &Command{
+		Name:        "help",
+		Description: "Show help information",
+		Action: func(args []string, cfg *config.Config) error {
 
-func displayVersion() error {
-	fmt.Println("Rubbish Trash Management Utility")
-	fmt.Println("Version: 0.0.1")
-	fmt.Println("Author: pjmnx (Paul J.)")
-	fmt.Println("License: MIT")
-	return nil
+			if len(args) == 0 {
+				printGeneralHelp()
+				return nil
+			}
+
+			index := slices.IndexFunc(commands, func(c *Command) bool {
+				return c.Name == strings.ToLower(args[0])
+			})
+
+			if index == -1 {
+				return fmt.Errorf("unknown command: %s", args[0])
+			}
+
+			// Display help information
+			commands[index].Options.Usage()
+
+			return nil
+		}, // Assuming helper.Command is a function that handles the "help" command
+		Options: flag.NewFlagSet("help", flag.ExitOnError), // No specific flags for help, but can be extended
+	}
+
+	commands    []*Command = []*Command{cmdToss, cmdRestore, cmdStatus, cmdWipe}
+	helpCommand *Command
+)
+
+func printGeneralHelp() {
+	fmt.Print("Rubbish is a tool to manage your trash effectively.\n\n",
+		"Usage:\n\n",
+		"  rubbish <command> [options]\n\n",
+		"Available commands:\n\n")
+
+	for _, cmd := range commands {
+		fmt.Printf("\t%s\t\t%s\n", cmd.Name, cmd.Description)
+	}
+
+	fmt.Println("\nUse \"rubbish help <command>\" for more information on a specific command.")
+}
+
+func displayVersion() {
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" {
+		fmt.Printf("Build Version: %s\n", info.Main.Version)
+	} else {
+		fmt.Printf("Build Version: %s\n", "unknown")
+	}
 }
 
 func init() {
-	flag.Bool("version", false, "Show version information")
-	flag.Bool("V", false, "Show version information (alias for --version)")
-
-	commands = []Command{
-		{
-			Name:        "toss",
-			Description: "Move files to the trash",
-			Run:         tosser.Command, // Assuming tosser.Command is a function that handles the "toss" command
-			Flags:       tosser.Flags,   // Optional
-		},
-		{
-			Name:        "restore",
-			Description: "Restore files from the trash",
-			Run:         restorer.Command, // Assuming restorer.Command is a function that handles the "restore" command
-			Flags:       restorer.Flags,
-		},
-		{
-			Name:        "wipe",
-			Description: "Clean up the rubbish",
-			Run:         wipe.Command, // Assuming cleaner.Command is a function that handles the "wipe" command
-			Flags:       wipe.Flags,   // Optional
-		},
-		{
-			Name:        "status",
-			Description: "Show the status of the trash",
-			Run:         status.Command, // Assuming status.Command is a function that handles the "status" command
-			Flags:       status.Flags,
-		},
-		{
-			Name:        "help",
-			Description: "Show help information",
-			Run:         showHelp,                                  // Assuming helper.Command is a function that handles the "help" command
-			Flags:       flag.NewFlagSet("help", flag.ExitOnError), // No specific flags for help, but can be extended
-		},
-	}
-	helpCommand = &commands[4]
-
-}
-
-// showHelp displays comprehensive help information for the rubbish utility.
-// It provides usage instructions, available commands, practical examples,
-// and current configuration settings to help users understand and effectively
-// use the trash management system.
-//
-// The help output includes:
-// - Basic usage syntax
-// - List of all available commands with descriptions
-// - Practical examples for common operations
-// - Current configuration values for reference
-// - Additional resources for more information
-//
-// Parameters:
-//   - args: Command-line arguments (unused in help display)
-//   - cfg: Application configuration used to display current settings
-//
-// Returns nil as help display operations do not fail.
-func showHelp(args []string, cfg *config.Config) error {
-	fs := flag.NewFlagSet("help", flag.ExitOnError)
-
-	fs.Usage = func() {
-		fmt.Println("Usage: rubbish <command> [options]")
-		fmt.Println("Available commands:")
-		for _, cmd := range commands {
-			fmt.Printf("  %s: %s\n", cmd.Name, cmd.Description)
-		}
-		fmt.Println("\nUse 'rubbish <command> --help' for more information on a specific command.")
-	}
-	fs.Parse(args)
-
-	for _, cmd := range commands {
-		if fs.Arg(0) != "" && cmd.Name != fs.Arg(0) {
-			fmt.Printf("Command: %s\nDescription: %s\n", cmd.Name, cmd.Description)
-			if cmd.Flags != nil {
-				fmt.Println("Usage:")
-				cmd.Flags.PrintDefaults()
-			}
-			fmt.Println()
-		}
-	}
-	return nil
+	flag.BoolFunc("version", "Show version information", func(s string) error {
+		displayVersion()
+		os.Exit(0)
+		return nil
+	})
 }
 
 // main is the entry point for the rubbish trash management utility.
@@ -181,11 +175,6 @@ func showHelp(args []string, cfg *config.Config) error {
 func main() {
 	flag.Parse()
 
-	if flag.Lookup("version").Value.String() == "true" || flag.Lookup("V").Value.String() == "true" {
-		displayVersion()
-		return
-	}
-
 	cfg, err := loadConfig()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "\033[31mError:\033[0m %v\n", err)
@@ -208,29 +197,36 @@ func main() {
 
 	//Validate command line arguments
 	if len(flag.Args()) < 1 {
-		fmt.Println("Usage: rubbish <command> [args]")
-		fmt.Println("Use 'rubbish help' to see available commands.")
-		showHelp(nil, cfg)
-		os.Exit(1)
+		printGeneralHelp()
+		os.Exit(0)
 		return
 	}
 
-	cmdName := flag.Arg(0)
-	for _, cmd := range commands {
-		if cmd.Name == cmdName {
-			cmd.Flags.Parse(flag.Args()[1:])
+	if cmdHelp.Name == flag.Arg(0) {
+		cmdHelp.Options.Parse(flag.Args()[1:])
+		err := cmdHelp.Action(cmdHelp.Options.Args(), cfg)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "\033[31mError:\033[0m %v\n", err)
+			printGeneralHelp()
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
 
-			err := cmd.Run(cmd.Flags.Args(), cfg)
+	for _, cmd := range commands {
+		if cmd.Name == flag.Arg(0) {
+			cmd.Options.Parse(flag.Args()[1:])
+
+			err := cmd.Action(cmd.Options.Args(), cfg)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "\033[31mError:\033[0m %v\n", err)
 				os.Exit(1)
 			}
-			return
+			os.Exit(0)
 		}
 	}
 
-	fmt.Fprintf(os.Stderr, "\033[31mError:\033[0m Unknown command '%s'\n", cmdName)
-	fmt.Println("Use 'rubbish help' to see available commands.")
-	helpCommand.Flags.PrintDefaults()
+	fmt.Fprintf(os.Stderr, "\033[31mError:\033[0m Unknown command '%s'\n\n", flag.Arg(0))
+	printGeneralHelp()
 	os.Exit(1)
 }
