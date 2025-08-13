@@ -9,90 +9,74 @@ import (
 	"strings"
 )
 
-var Flags = flag.NewFlagSet("status", flag.ExitOnError)
+var (
+	Flags             = flag.NewFlagSet("status", flag.ExitOnError)
+	globalLookup bool = false
+)
 
 func init() {
-	Flags.Bool("global", false, "Display global status of the trash")
-	Flags.Bool("g", false, "Display global status of the trash (alias for --global)")
+	Flags.BoolVar(&globalLookup, "g", false, "Display rubbish status globally")
 
 	// configure the command options and flags
 	Flags.Usage = func() {
-		fmt.Println("Usage: rubbish status [options]")
-		fmt.Println("Options:")
+		fmt.Println("Rubbish Status shows the current state of rubbish container.\n",
+			"Usage:\n\n",
+			"\trubbish status [options]\n\n",
+			"Options:")
 		Flags.PrintDefaults()
 	}
 }
 
-func isGlobalStatus() bool {
-	// Check if the global flag is set
-	return (Flags.Lookup("global") != nil && Flags.Lookup("global").Value.String() == "true") ||
-		(Flags.Lookup("g") != nil && Flags.Lookup("g").Value.String() == "true")
-}
-
+// The status command is intended to show the current state of the rubbish,
+// including the number of items, their retention times, and any other relevant
+// metadata that can help users understand what is currently in the rubbish.
 func Command(args []string, cfg *config.Config) error {
-	// The status command is intended to show the current state of the trash,
-	// including the number of items, their retention times, and any other relevant
-	// metadata that can help users understand what is currently in the trash.
-
-	if cfg.Journal == nil {
-		return fmt.Errorf("journal is not initialized, cannot show status")
-	}
-
-	if !Flags.Parsed() {
-		err := Flags.Parse(args)
-		if err != nil {
-			return fmt.Errorf("error parsing flags: %w", err)
+	records, err := func() ([]*journal.MetaData, error) {
+		if globalLookup {
+			return cfg.Journal.GetAllItems()
 		}
+		return cfg.Journal.GetContainerItems(cfg.WorkingDir)
+	}()
+
+	if err != nil {
+		return fmt.Errorf("error retrieving rubbish items: %w", err)
 	}
 
-	// If the global flag is set, show the global status of the trash
-	// Otherwise, show the local status
-	globalFlag := isGlobalStatus()
-
-	var records []*journal.MetaData
-	var err error
-
-	if globalFlag {
+	if globalLookup {
 		fmt.Println("Showing global rubbish status")
-		records, err = cfg.Journal.GetAllItems()
-		if err != nil {
-			return fmt.Errorf("error retrieving global items from journal: %w", err)
-		}
-	} else {
-		records, err = cfg.Journal.GetContainerItems(cfg.WorkingDir)
-		if err != nil {
-			return fmt.Errorf("error retrieving local items from journal: %w", err)
-		}
 	}
 
-	fmt.Printf("Number of items: %d\n", len(records))
-	if len(records) == 0 {
-		fmt.Println("No items in the trash.")
+	count := len(records)
+	wipeables := 0
+
+	if count == 0 {
+		fmt.Println("No rubbish found.")
 		return nil
 	}
 
-	toWipeCount := 0
+	println("Rubbish:")
 
 	for _, record := range records {
 
-		if !globalFlag {
+		if !globalLookup {
 			// Update the item name to reflect that is relative to the working directory
-			record.Item = strings.Replace(strings.Replace(record.Origin, path.Base(record.Origin), record.Item, 1), cfg.WorkingDir+"/", "", 1)
+			record.Item = path.Join(strings.Replace(path.Dir(record.Origin), cfg.WorkingDir+"/", "", 1), record.Item)
 		}
 
 		if record.IsWipeable() {
-			toWipeCount++
+			wipeables++
 		}
-		fmt.Println("\t" + String(record))
+
+		fmt.Println(" > " + String(record))
 	}
 
-	fmt.Printf("Wipable count: %d\n", toWipeCount)
+	fmt.Printf("Total: %d | Wipable: %d\n", count, wipeables)
 
 	return nil
 }
 
 func String(record *journal.MetaData) string {
-	const msg = "Item:%s | Tossed:%v | WipeIn:%s\n"
+	const msg = "%s | Tossed:%v | WipeIn:%s"
 
 	remaining := record.RemainingTime()
 	var remain_msg string
