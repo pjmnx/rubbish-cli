@@ -3,20 +3,29 @@ package tosser
 import (
 	"flag"
 	"fmt"
+	"math/rand"
 	"os"
+	"path"
+	"path/filepath"
 	"rubbish/config"
+	"time"
 )
 
-var Flags = flag.NewFlagSet("toss", flag.ExitOnError)
-var retentionTime int
+var (
+	Flags             = flag.NewFlagSet("toss", flag.ExitOnError)
+	retentionTime int = -1
+	silentMode    bool
+)
 
 func init() {
-	Flags.IntVar(&retentionTime, "retention", 0, "Time to retain the file before it is wiped out from the filesystem.")
-	Flags.IntVar(&retentionTime, "r", 0, "Time to retain the file before it is wiped out from the filesystem.")
+	Flags.IntVar(&retentionTime, "r", -1, "Time to retain the file before it is wiped out from the filesystem.")
+	Flags.BoolVar(&silentMode, "s", false, "Silent mode. Suppress non-error messages.")
 
 	Flags.Usage = func() {
-		fmt.Println("Usage: rubbish toss [options] <file1> <file2> ...")
-		fmt.Println("Options:")
+		fmt.Println("Toss moves the specified files to the rubbish bin.\n\n",
+			"Usage:\n\n",
+			"\trubbish toss [options] <file1> <file2> ...\n\n",
+			"Options:")
 		Flags.PrintDefaults()
 	}
 }
@@ -41,46 +50,72 @@ func init() {
 // Returns an error if no files are specified, if any file cannot be accessed,
 // or if the tossing operation fails for any item.
 func Command(args []string, cfg *config.Config) error {
-	if len(Flags.Args()) == 0 {
+	if len(args) == 0 {
 		return fmt.Errorf("no files or directory specified to toss")
 	}
 
-	if Flags.Parsed() {
-		if retentionTime > 0 {
-			cfg.WipeoutTime = retentionTime
-		}
+	if retentionTime >= 0 {
+		cfg.WipeoutTime = retentionTime
 	}
 
-	var tosser func(string, *config.Config) error
-
-	for _, file := range Flags.Args() {
-		if file == "" {
-			return fmt.Errorf("no files specified to toss")
+	for _, file := range args {
+		if _, err := os.Stat(file); err != nil {
+			return fmt.Errorf("invalid rubbish to toss '%s': %w", file, err)
 		}
 
-		fileinfo, err := os.Stat(file)
-		if err != nil {
-			return fmt.Errorf("error getting file info for %s: %w", file, err)
+		if err := Toss(file, cfg); err != nil {
+			return fmt.Errorf("error tossing rubbish %s: %w", file, err)
 		}
 
-		if fileinfo.IsDir() {
-			tosser = TossDirectory
+		if silentMode {
+			continue
+		}
+
+		fmt.Printf("\033[32mTossed\033[0m '%s' to rubbish bin. ", file)
+		if cfg.WipeoutTime == 0 {
+			fmt.Println("Wipeout immediate.")
 		} else {
-			tosser = TossFile
-		}
-		err = tosser(file, cfg)
-		if err != nil {
-			return fmt.Errorf("error tossing file %s: %w", file, err)
+			fmt.Printf("Wipeout after %d days.\n", cfg.WipeoutTime)
 		}
 	}
 
-	count, err := cfg.Journal.Count()
-	if err != nil {
-		fmt.Printf("error getting journal count: %v\n", err.Error())
+	if silentMode {
+		return nil
+	}
+
+	if size, err := config.BinSize(cfg); err != nil {
+		fmt.Printf("Error determining rubbish bin size: %v\n", err)
 	} else {
-		fmt.Printf("Total tossed files (local): %d\n", count)
+		fmt.Printf("Bin size: %s\n", config.ReadableSize(uint64(size)))
 	}
 
-	fmt.Fprintf(os.Stdout, "\033[32mTossing\033[0m files %s to trash with a wait time of %d days.\n", Flags.Args(), cfg.WipeoutTime)
+	return nil
+}
+
+func NameSufix(size uint) string {
+	// const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	b := make([]byte, size)
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for i := range b {
+		b[i] = charset[r.Intn(len(charset))]
+	}
+	return string(b)
+}
+
+func Toss(item string, cfg *config.Config) error {
+	destination := path.Join(cfg.ContainerPath, filepath.Base(item+"_"+NameSufix(6)))
+
+	if err := cfg.Journal.AddFileByName(filepath.Base(destination), item, cfg.WipeoutTime); err != nil {
+		return fmt.Errorf("error adding item to rubbish journal: %v", err)
+	}
+
+	if err := os.Rename(item, destination); err != nil {
+		if errj := cfg.Journal.Delete(filepath.Base(destination)); errj != nil {
+			return fmt.Errorf("error deleting journal entry for %s due to unable to move to rubbish bin: %w", item, errj)
+		}
+		return fmt.Errorf("error moving item to rubbish bin: %v", err)
+	}
+
 	return nil
 }

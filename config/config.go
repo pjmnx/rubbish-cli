@@ -2,9 +2,12 @@ package config
 
 import (
 	"fmt"
+	"math/bits"
 	"os"
 	"path"
+	"path/filepath"
 	"rubbish/journal"
+	"strings"
 
 	"github.com/go-ini/ini"
 )
@@ -129,4 +132,38 @@ func NormalizePath(container_path string) string {
 	}
 
 	return path.Join(userHomeDir, container_path)
+}
+
+func BinSize(cfg *Config) (int64, error) {
+	var size int64
+	err := filepath.Walk(cfg.ContainerPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if strings.Contains(path, ".journal") {
+			return nil
+		}
+
+		if !info.IsDir() {
+			size += info.Size()
+		}
+		return nil
+	})
+
+	if err != nil {
+		fmt.Printf("Error calculating rubbish size: %v\n", err)
+		return 0, err
+	}
+	return size, nil
+}
+
+func ReadableSize(size uint64) string {
+	if size < 1024 {
+		return fmt.Sprintf("%d bytes", size)
+	}
+
+	base := uint(bits.Len64(size) / 10)
+	val := float64(size) / float64(uint64(1<<(base*10)))
+
+	return fmt.Sprintf("%.1f %cB", val, " KMGTPE"[base])
 }
