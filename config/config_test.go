@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"rubbish/config"
@@ -133,5 +134,82 @@ func TestJournalLoadFailure(t *testing.T) {
 	_, err := config.Load([]string{sysCfg, userCfg})
 	if err == nil {
 		t.Error("Expected error when journal load fails")
+	}
+}
+
+// === Merged from config_binsize_test.go ===
+
+func TestReadableSize_BytesUnder1KiB(t *testing.T) {
+	cases := []struct {
+		in   uint64
+		want string
+	}{
+		{0, "0 bytes"},
+		{1, "1 bytes"},
+		{512, "512 bytes"},
+		{1023, "1023 bytes"},
+	}
+	for _, c := range cases {
+		if got := config.ReadableSize(c.in); got != c.want {
+			t.Errorf("ReadableSize(%d) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestReadableSize_KB_MB_GB(t *testing.T) {
+	// 1 KiB
+	if got := config.ReadableSize(1024); got != "1.0 KB" {
+		t.Errorf("ReadableSize(1024) = %q, want '1.0 KB'", got)
+	}
+	// 1.5 KiB
+	if got := config.ReadableSize(1536); got != "1.5 KB" {
+		t.Errorf("ReadableSize(1536) = %q, want '1.5 KB'", got)
+	}
+	// 1 MiB
+	if got := config.ReadableSize(1024 * 1024); got != "1.0 MB" {
+		t.Errorf("ReadableSize(1MiB) = %q, want '1.0 MB'", got)
+	}
+	// 1 GiB
+	if got := config.ReadableSize(1024 * 1024 * 1024); got != "1.0 GB" {
+		t.Errorf("ReadableSize(1GiB) = %q, want '1.0 GB'", got)
+	}
+}
+
+func TestBinSize_CalculatesAndIgnoresJournal(t *testing.T) {
+	dir := t.TempDir()
+	// files that should count: 100B root, 50B nested
+	mustWrite := func(p string, n int) {
+		if err := os.WriteFile(p, bytes.Repeat([]byte{'a'}, n), 0o644); err != nil {
+			t.Fatalf("write %s: %v", p, err)
+		}
+	}
+	mustMkdir := func(p string) {
+		if err := os.MkdirAll(p, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", p, err)
+		}
+	}
+
+	mustWrite(filepath.Join(dir, "root.bin"), 100)
+	mustMkdir(filepath.Join(dir, "nested"))
+	mustWrite(filepath.Join(dir, "nested", "b.bin"), 50)
+
+	// journal files should be ignored
+	mustMkdir(filepath.Join(dir, ".journal"))
+	mustWrite(filepath.Join(dir, ".journal", "data"), 1000)
+
+	cfg := &config.Config{ContainerPath: dir}
+	got, err := config.BinSize(cfg)
+	if err != nil {
+		t.Fatalf("BinSize returned error: %v", err)
+	}
+	if want := int64(150); got != want {
+		t.Errorf("BinSize = %d, want %d", got, want)
+	}
+}
+
+func TestBinSize_MissingContainerPathErrors(t *testing.T) {
+	cfg := &config.Config{ContainerPath: filepath.Join(t.TempDir(), "does-not-exist")}
+	if _, err := config.BinSize(cfg); err == nil {
+		t.Fatalf("expected error for missing container path")
 	}
 }
