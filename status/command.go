@@ -76,14 +76,19 @@ func Command(args []string, cfg *config.Config) error {
 }
 
 func String(record *journal.MetaData) string {
-	const msg = "%s | Tossed:%v | WipeIn:%s"
+	const msg = "%s | Tossed:%v | %s"
 
 	remaining := record.RemainingTime()
 	var remain_msg string
-	if remaining.Hours() >= 24.0 {
-		remain_msg = fmt.Sprintf("%.01fd", remaining.Hours()/24.0)
-	} else {
-		remain_msg = fmt.Sprintf("%v", remaining)
+
+	switch {
+	case remaining.Hours() > 24.0:
+		remain_msg = fmt.Sprintf("WipeIn:%.01fd", remaining.Hours()/24.0)
+	case remaining.Hours() > 0:
+		remain_msg = fmt.Sprintf("WipeIn:%v", remaining)
+	default:
+		remain_msg = "Wipeable"
 	}
+
 	return fmt.Sprintf(msg, record.Item, record.TossElapsed(), remain_msg)
 }
