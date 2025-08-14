@@ -12,10 +12,12 @@ import (
 var (
 	Flags             = flag.NewFlagSet("status", flag.ExitOnError)
 	globalLookup bool = false
+	sizeOnly     bool = false
 )
 
 func init() {
 	Flags.BoolVar(&globalLookup, "g", false, "Display rubbish status globally")
+	Flags.BoolVar(&sizeOnly, "s", false, "Display the rubbish bin size only.")
 
 	// configure the command options and flags
 	Flags.Usage = func() {
@@ -31,6 +33,17 @@ func init() {
 // including the number of items, their retention times, and any other relevant
 // metadata that can help users understand what is currently in the rubbish.
 func Command(args []string, cfg *config.Config) error {
+
+	totalSize, err := config.BinSize(cfg)
+	if err != nil {
+		return fmt.Errorf("error retrieving rubbish bin size: %w", err)
+	}
+
+	if sizeOnly {
+		fmt.Printf("Rubbish bin size: %s\n", config.ReadableSize(uint64(totalSize)))
+		return nil
+	}
+
 	records, err := func() ([]*journal.MetaData, error) {
 		if globalLookup {
 			return cfg.Journal.GetAllItems()
@@ -70,7 +83,7 @@ func Command(args []string, cfg *config.Config) error {
 		fmt.Println(" > " + String(record))
 	}
 
-	fmt.Printf("Total: %d | Wipable: %d\n", count, wipeables)
+	fmt.Printf("Total: %d | Wipable: %d | Bin Size: %s\n", count, wipeables, config.ReadableSize(uint64(totalSize)))
 
 	return nil
 }
