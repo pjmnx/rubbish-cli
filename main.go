@@ -196,11 +196,11 @@ func main() {
 	}
 
 	//Validate command line arguments
-	if len(flag.Args()) < 1 {
-		printGeneralHelp()
-		os.Exit(0)
-		return
-	}
+	// if len(flag.Args()) < 1 {
+	// 	printGeneralHelp()
+	// 	os.Exit(0)
+	// 	return
+	// }
 
 	if cmdHelp.Name == flag.Arg(0) {
 		cmdHelp.Options.Parse(flag.Args()[1:])
@@ -208,9 +208,24 @@ func main() {
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "\033[31mError:\033[0m %v\n", err)
 			printGeneralHelp()
-			os.Exit(1)
+			os.Exit(2)
+			return
 		}
-		os.Exit(0)
+		return
+	}
+
+	if !slices.ContainsFunc(commands, func(c *Command) bool {
+		return c.Name == flag.Arg(0)
+	}) {
+		if flag.Arg(0) == "" {
+			fmt.Fprintf(os.Stderr, "\033[31mError:\033[0m Unknown command\n\n")
+		} else {
+			fmt.Fprintf(os.Stderr, "\033[31mError:\033[0m Unknown command '%s'\n\n", flag.Arg(0))
+		}
+
+		printGeneralHelp()
+		os.Exit(1)
+		return
 	}
 
 	for _, cmd := range commands {
@@ -220,13 +235,9 @@ func main() {
 			err := cmd.Action(cmd.Options.Args(), cfg)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "\033[31mError:\033[0m %v\n", err)
-				os.Exit(1)
+				os.Exit(2)
+				return
 			}
-			os.Exit(0)
 		}
 	}
-
-	fmt.Fprintf(os.Stderr, "\033[31mError:\033[0m Unknown command '%s'\n\n", flag.Arg(0))
-	printGeneralHelp()
-	os.Exit(1)
 }
