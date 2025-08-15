@@ -109,7 +109,11 @@ func retrieveJournalRecords(cfg *config.Config) ([]*journal.MetaData, error) {
 }
 
 func relativePath(record *journal.MetaData, workingDir string) string {
-	return path.Join(strings.Replace(path.Dir(record.Origin), workingDir+"/", "", 1), record.Item)
+	relativePath := strings.Replace(path.Dir(record.Origin), workingDir, "", 1)
+	if relativePath != "" && relativePath[0] == '/' {
+		relativePath = relativePath[1:] // remove leading slash if exists
+	}
+	return path.Join(relativePath, record.Item)
 }
 
 func String(record *journal.MetaData) string {

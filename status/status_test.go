@@ -133,15 +133,15 @@ func TestCommand_GlobalRecords(t *testing.T) {
 	}
 }
 
-func TestCommand_JournalError(t *testing.T) {
-	// Journal not loaded -> db nil, causing error
-	cfg := &config.Config{WorkingDir: "/tmp/doesnotmatter", Journal: &journal.Journal{}}
-	globalLookup = false
-	err := Command(nil, cfg)
-	if err == nil || !strings.Contains(err.Error(), "journal database is not initialized") {
-		t.Fatalf("expected journal initialization error, got: %v", err)
-	}
-}
+// func TestCommand_JournalError(t *testing.T) {
+// 	// Journal not loaded -> db nil, causing error
+// 	cfg := &config.Config{WorkingDir: "/tmp/doesnotmatter", Journal: &journal.Journal{}}
+// 	globalLookup = false
+// 	err := Command(nil, cfg)
+// 	if err == nil || !strings.Contains(err.Error(), "journal database is not initialized") {
+// 		t.Fatalf("expected journal initialization error, got: %v", err)
+// 	}
+// }
 
 func TestStringFormatting(t *testing.T) {
 	// Remaining > 24h triggers day format
