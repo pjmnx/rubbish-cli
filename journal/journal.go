@@ -282,42 +282,20 @@ func (j *Journal) GetSize() (int64, error) {
 	return size, nil
 }
 
-func (j *Journal) GetContainerItems(container string) ([]*MetaData, error) {
+func (j *Journal) AddRecord(record *MetaData) error {
 	if j.db == nil {
-		return nil, fmt.Errorf("journal database is not initialized")
+		return fmt.Errorf("journal database is not initialized")
 	}
 
-	metadataList, err := j.GetAllItems()
-	if err != nil {
-		return nil, fmt.Errorf("error retrieving all items: %w", err)
-	}
-
-	var containerItems []*MetaData
-	for _, metadata := range metadataList {
-		if strings.HasPrefix(metadata.Origin, container) {
-			containerItems = append(containerItems, metadata)
-		}
-	}
-
-	if len(containerItems) == 0 {
-		return nil, nil
-	}
-	return containerItems, nil
+	return j.register(record)
 }
 
-func (j *Journal) GetAllItems() ([]*MetaData, error) {
+func (j *Journal) FilterPath(path string) ([]*MetaData, error) {
 	if j.db == nil {
 		return nil, fmt.Errorf("journal database is not initialized")
 	}
-	var metadataList []*MetaData
-	// Retrieve all items from the journal database
-	// This method iterates through all stored items and returns a slice
-	// containing metadata for every item currently in the trash.
-	// Useful for displaying trash contents and generating status reports.
-	// Returns a slice of MetaData pointers for all items in the journal,
-	// or an error if the database is not initialized or if any unmarshaling
-	// operation fails during iteration.
 
+	var metadataList []*MetaData
 	err := j.db.View(func(txn *badger.Txn) error {
 		it := txn.NewIterator(badger.DefaultIteratorOptions)
 		defer it.Close()
@@ -331,7 +309,9 @@ func (j *Journal) GetAllItems() ([]*MetaData, error) {
 			if err != nil {
 				return fmt.Errorf("error unmarshaling metadata: %w", err)
 			}
-			metadataList = append(metadataList, &metadata)
+			if strings.Contains(metadata.Origin, path) {
+				metadataList = append(metadataList, &metadata)
+			}
 		}
 		return nil
 	})
@@ -342,10 +322,34 @@ func (j *Journal) GetAllItems() ([]*MetaData, error) {
 	return metadataList, nil
 }
 
-func (j *Journal) AddRecord(record *MetaData) error {
+func (j *Journal) FilterWipeable() ([]*MetaData, error) {
 	if j.db == nil {
-		return fmt.Errorf("journal database is not initialized")
+		return nil, fmt.Errorf("journal database is not initialized")
 	}
 
-	return j.register(record)
+	var metadataList []*MetaData
+	err := j.db.View(func(txn *badger.Txn) error {
+		it := txn.NewIterator(badger.DefaultIteratorOptions)
+		defer it.Close()
+
+		for it.Rewind(); it.Valid(); it.Next() {
+			item := it.Item()
+			var metadata MetaData
+			err := item.Value(func(val []byte) error {
+				return json.Unmarshal(val, &metadata)
+			})
+			if err != nil {
+				return fmt.Errorf("error unmarshaling metadata: %w", err)
+			}
+			if metadata.IsWipeable() {
+				metadataList = append(metadataList, &metadata)
+			}
+		}
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+	return metadataList, nil
 }

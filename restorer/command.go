@@ -47,7 +47,7 @@ func Command(args []string, cfg *config.Config) error {
 		fmt.Println("Silent mode enabled. No output will be displayed.")
 	}
 
-	local_rubbish, err := cfg.Journal.GetContainerItems(cfg.WorkingDir)
+	local_rubbish, err := cfg.Journal.FilterPath(cfg.WorkingDir)
 
 	if err != nil {
 		return fmt.Errorf("error retrieving local rubbish: %v", err)

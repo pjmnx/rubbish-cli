@@ -34,7 +34,11 @@ func init() {
 // metadata that can help users understand what is currently in the rubbish.
 func Command(args []string, cfg *config.Config) error {
 
+	var records []*journal.MetaData
+	var err error
+
 	totalSize, err := config.BinSize(cfg)
+
 	if err != nil {
 		return fmt.Errorf("error retrieving rubbish bin size: %w", err)
 	}
@@ -44,12 +48,7 @@ func Command(args []string, cfg *config.Config) error {
 		return nil
 	}
 
-	records, err := func() ([]*journal.MetaData, error) {
-		if globalLookup {
-			return cfg.Journal.GetAllItems()
-		}
-		return cfg.Journal.GetContainerItems(cfg.WorkingDir)
-	}()
+	records, err = retrieveJournalRecords(cfg)
 
 	if err != nil {
 		return fmt.Errorf("error retrieving rubbish items: %w", err)
@@ -87,6 +86,25 @@ func Command(args []string, cfg *config.Config) error {
 
 	return nil
 }
+
+func retrieveJournalRecords(cfg *config.Config) ([]*journal.MetaData, error) {
+	var (
+		records []*journal.MetaData
+		err     error
+	)
+
+	switch {
+	case globalLookup:
+		records, err = cfg.Journal.List()
+	case wipeableOnly:
+		records, err = cfg.Journal.FilterWipeable()
+	default:
+		records, err = cfg.Journal.FilterPath(cfg.WorkingDir)
+	}
+
+	return records, err
+}
+
 
 func String(record *journal.MetaData) string {
 	const msg = "%s | Tossed:%v | %s"

@@ -90,14 +90,14 @@ func getRecords(cfg *config.Config, global bool, ignoreWipeTime bool) ([]*journa
 
 	if global {
 		fmt.Println("Performing global wipeout of all items in the journal...")
-		records, err = cfg.Journal.GetAllItems()
+		records, err = cfg.Journal.List()
 		if err != nil {
 			return nil, fmt.Errorf("error retrieving all items from journal: %v", err)
 		}
 
 	} else {
 		fmt.Println("Performing local wipeout of items in the rubbish container...")
-		records, err = cfg.Journal.GetContainerItems(cfg.WorkingDir)
+		records, err = cfg.Journal.FilterPath(cfg.WorkingDir)
 		if err != nil {
 			return nil, fmt.Errorf("error retrieving container items from journal: %v", err)
 		}
