@@ -13,11 +13,13 @@ var (
 	Flags             = flag.NewFlagSet("status", flag.ExitOnError)
 	globalLookup bool = false
 	sizeOnly     bool = false
+	wipeableOnly bool = false
 )
 
 func init() {
 	Flags.BoolVar(&globalLookup, "g", false, "Display rubbish status globally")
 	Flags.BoolVar(&sizeOnly, "s", false, "Display the rubbish bin size only.")
+	Flags.BoolVar(&wipeableOnly, "w", false, "Display only wipeable rubbish items.")
 
 	// configure the command options and flags
 	Flags.Usage = func() {
@@ -72,7 +74,7 @@ func Command(args []string, cfg *config.Config) error {
 
 		if !globalLookup {
 			// Update the item name to reflect that is relative to the working directory
-			record.Item = path.Join(strings.Replace(path.Dir(record.Origin), cfg.WorkingDir+"/", "", 1), record.Item)
+			record.Item = relativePath(record, cfg.WorkingDir)
 		}
 
 		if record.IsWipeable() {
@@ -105,6 +107,9 @@ func retrieveJournalRecords(cfg *config.Config) ([]*journal.MetaData, error) {
 	return records, err
 }
 
+func relativePath(record *journal.MetaData, workingDir string) string {
+	return path.Join(strings.Replace(path.Dir(record.Origin), workingDir+"/", "", 1), record.Item)
+}
 
 func String(record *journal.MetaData) string {
 	const msg = "%s | Tossed:%v | %s"
