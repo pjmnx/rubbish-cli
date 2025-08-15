@@ -7,6 +7,7 @@ import (
 	"rubbish/config"
 	"rubbish/journal"
 	"strings"
+	"time"
 )
 
 var (
@@ -121,10 +122,10 @@ func String(record *journal.MetaData) string {
 	case remaining.Hours() > 24.0:
 		remain_msg = fmt.Sprintf("WipeIn:%.01fd", remaining.Hours()/24.0)
 	case remaining.Hours() > 0:
-		remain_msg = fmt.Sprintf("WipeIn:%v", remaining)
+		remain_msg = fmt.Sprintf("WipeIn:%v", remaining.Round(time.Second))
 	default:
 		remain_msg = "Wipeable"
 	}
 
-	return fmt.Sprintf(msg, record.Item, record.TossElapsed(), remain_msg)
+	return fmt.Sprintf(msg, record.Item, record.TossElapsed().Round(time.Second), remain_msg)
 }
