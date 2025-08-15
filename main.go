@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"rubbish/config"
+	"rubbish/info"
 	"rubbish/restorer"
 	"rubbish/status"
 	"rubbish/tosser"
@@ -94,6 +95,12 @@ var (
 		Action:      status.Command, // Assuming status.Command is a function that handles the "status" command
 		Options:     status.Flags,
 	}
+	cmdInfo *Command = &Command{
+		Name:        "info",
+		Description: "Show information about a rubbish item",
+		Action:      info.Command,
+		Options:     info.Flags,
+	}
 	cmdHelp *Command = &Command{
 		Name:        "help",
 		Description: "Show help information",
@@ -120,7 +127,7 @@ var (
 		Options: flag.NewFlagSet("help", flag.ExitOnError), // No specific flags for help, but can be extended
 	}
 
-	commands    []*Command = []*Command{cmdToss, cmdRestore, cmdStatus, cmdWipe}
+	commands    []*Command = []*Command{cmdToss, cmdRestore, cmdStatus, cmdInfo, cmdWipe}
 	helpCommand *Command
 )
 
