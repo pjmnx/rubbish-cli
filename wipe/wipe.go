@@ -12,7 +12,7 @@ import (
 
 var (
 	Flags           *flag.FlagSet = flag.NewFlagSet("wipe", flag.ExitOnError)
-	completeWipeout bool          = false // completeWipeout indicates whether to perform a complete wipe of the rubbish container
+	forceWipeout    bool          = false // completeWipeout indicates whether to perform a complete wipe of the rubbish container
 	autoAcknowledge bool          = false // autoAcknowledge indicates whether to automatically acknowledge the wipe operation by the user
 	globalWipeout   bool          = false // globalWipeout indicates whether to perform a global wipe of all items in the journal
 )
@@ -26,19 +26,13 @@ func init() {
 		println("Options:")
 		Flags.PrintDefaults()
 	}
-	// Flags.BoolVar(&completeWipeout, "complete", false, "Perform a complete wipe of the local rubbish container (default: false). Wipeout all items regardless of their WipeoutTime.")
-	// Flags.BoolVar(&completeWipeout, "c", false, "Alias for --complete")
-	Flags.BoolVar(&completeWipeout, "c", false, "Complete wipe of the rubbish regardless of their WipeoutTime (default: false).")
-	// Flags.BoolVar(&autoAcknowledge, "yes", false, "Automatically acknowledge the wipe operation (default: false)")
-	// Flags.BoolVar(&autoAcknowledge, "y", false, "Alias for --yes")
+	Flags.BoolVar(&forceWipeout, "f", false, "Force wipe of the rubbish regardless of their WipeoutTime (default: false).")
 	Flags.BoolVar(&autoAcknowledge, "y", false, "Automatically acknowledge the wipe operation (default: false).")
-	// Flags.BoolVar(&globalWipeout, "global", false, "Perform a global wipe of all items in the journal (default: false).")
-	// Flags.BoolVar(&globalWipeout, "g", false, "Alias for --global")
 	Flags.BoolVar(&globalWipeout, "g", false, "Perform a global wipe of all items in the journal (default: false).")
 }
 
 func Command(args []string, cfg *config.Config) error {
-	records, err := getRecords(cfg, globalWipeout, completeWipeout)
+	records, err := getRecords(cfg, globalWipeout, forceWipeout)
 
 	if err != nil {
 		return fmt.Errorf("error retrieving items from journal: %v", err)
