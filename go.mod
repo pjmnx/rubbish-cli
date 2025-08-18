@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Paul Jimenez D.
+// Licensed under the MIT License
+
 module rubbish
 
 go 1.24.4
