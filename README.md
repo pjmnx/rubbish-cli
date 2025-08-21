@@ -1,6 +1,7 @@
 # rubbish-cli
 
 [![Release](https://img.shields.io/github/v/release/pjmnx/rubbish-cli?sort=semver)](https://github.com/pjmnx/rubbish-cli/releases)
+![Release Date](https://img.shields.io/github/release-date/pjmnx/rubbish-cli)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Go Version](https://img.shields.io/badge/go-1.20%2B-blue)
 [![Go Report Card](https://goreportcard.com/badge/github.com/pjmnx/rubbish-cli)](https://goreportcard.com/report/github.com/pjmnx/rubbish-cli)
