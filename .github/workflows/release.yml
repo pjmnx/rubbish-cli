@@ -1,0 +1,141 @@
+name: Release (tag push)
+
+on:
+  push:
+    tags:
+      - 'v*'         # run when you push a tag like "v1.2.3"
+
+permissions:
+  contents: write     # needed to create releases/upload assets
+  issues: write       # needed to create a GitHub Issue notification
+
+env:
+  APP_NAME: rubbish   # change to your binary name
+
+jobs:
+  test:
+    name: Run tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+      - name: Run unit tests
+        run: go test ./...
+      - name: Notify on failure (GitHub Issue)
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const refName = process.env.GITHUB_REF_NAME || context.ref;
+            const runUrl = `https://github.com/${owner}/${repo}/actions/runs/${context.runId}`;
+            const title = `CI tests failed @ ${refName}`;
+            const body = [
+              `Automated notice: unit tests failed for ${owner}/${repo}.`,
+              `Run: ${runUrl}`,
+              `Ref: ${refName}`,
+              `Workflow: ${context.workflow}`
+            ].join('\n');
+            await github.rest.issues.create({ owner, repo, title, body, labels: ['ci', 'failure', 'automated'] });
+
+  build:
+    name: Build binaries (Linux + macOS)
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [linux, darwin]
+        arch: [386, amd64, arm64]
+        exclude:
+          - os: darwin
+            arch: 386
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+      - name: Build binary
+        env:
+          CGO_ENABLED: 0
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+          VERSION: ${{ github.ref_name }}   # e.g. v1.2.3
+        run: |
+          set -euo pipefail
+          outdir="dist/${{ matrix.os }}-${{ matrix.arch }}"
+          mkdir -p "$outdir"
+          # Build CLI (adjust path if your main package is elsewhere)
+          go build -trimpath -ldflags "-s -w" -o "${outdir}/${{ env.APP_NAME }}" ./
+          echo "Built ${outdir}/${{ env.APP_NAME }}"
+      - name: Package with sample config
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          base="${{ env.APP_NAME }}_${VERSION}_${{ matrix.os }}_${{ matrix.arch }}"
+          pkgdir="dist/${base}"
+          mkdir -p "$pkgdir"
+          cp "dist/${{ matrix.os }}-${{ matrix.arch }}/${{ env.APP_NAME }}" "$pkgdir/${{ env.APP_NAME }}"
+          # Include README and LICENSE if present
+          cp README.md "$pkgdir/" 2>/dev/null || true
+          cp LICENSE "$pkgdir/" 2>/dev/null || true
+          # Add sample config (use repo file if present; otherwise generate)
+          if [ -f "packaging/sample.rubbish.cfg" ]; then
+            cp packaging/sample.rubbish.cfg "$pkgdir/sample.rubbish.cfg"
+          else
+            printf '%s\n' \
+              '[DEFAULT]' \
+              'wipeout_time = 30' \
+              'container_path = ~/.local/share/rubbish' \
+              '[notifications]' \
+              'enabled = false' \
+              'days_in_advance = 3' \
+              'timeout = 5' > "$pkgdir/sample.rubbish.cfg"
+          fi
+          # Also provide a standalone copy of the sample for convenience
+          cp "$pkgdir/sample.rubbish.cfg" "dist/sample.rubbish.cfg"
+          # Create tar.gz archive
+          tar -C "$pkgdir" -czf "dist/${base}.tar.gz" .
+          # SHA256 checksum
+          shasum -a 256 "dist/${base}.tar.gz" > "dist/${base}.tar.gz.sha256"
+          echo "Packaged dist/${base}.tar.gz"
+      - name: Upload built artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries
+          path: |
+            dist/*.tar.gz
+            dist/*.tar.gz.sha256
+            dist/sample.rubbish.cfg
+
+  release:
+    name: Create GitHub Release & upload assets
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download built artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: binaries
+          path: releasedist
+      - name: Create GitHub Release and attach artifacts
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          body: |
+            Automated release for tag ${{ github.ref_name }}
+
+            Assets include platform archives with the binary, README, LICENSE, and a sample config:
+            - sample.rubbish.cfg (install to /etc/rubbish/config.cfg)
+          artifacts: "releasedist/**"
+          draft: false
+          prerelease: false
