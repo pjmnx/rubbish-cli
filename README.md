@@ -5,6 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Go Version](https://img.shields.io/badge/go-1.20%2B-blue)
 [![Go Report Card](https://goreportcard.com/badge/github.com/pjmnx/rubbish-cli)](https://goreportcard.com/report/github.com/pjmnx/rubbish-cli)
+[![CodeQL](https://github.com/pjmnx/rubbish-cli/actions/workflows/codeql.yml/badge.svg)](https://github.com/pjmnx/rubbish-cli/actions/workflows/codeql.yml)
 
 Trash management for the terminal. Rubbish is a safe alternative to `rm`: instead of permanently deleting files, it “tosses” them into a per-user container where they remain for a retention period. You can list, inspect, restore, and eventually wipe them when they expire.
 
