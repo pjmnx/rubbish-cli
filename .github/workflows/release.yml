@@ -70,7 +70,7 @@ jobs:
           outdir="dist/${{ matrix.os }}-${{ matrix.arch }}"
           mkdir -p "$outdir"
           # Build CLI (adjust path if your main package is elsewhere)
-          go build -trimpath -ldflags "-s -w" -o "${outdir}/${{ env.APP_NAME }}" ./
+          GOOS=${{matrix.os}} GOARCH=${{matrix.arch}} go build -trimpath -ldflags "-s -w" -o "${outdir}/${{ env.APP_NAME }}" ./
           echo "Built ${outdir}/${{ env.APP_NAME }}"
       - name: Package with sample config
         env:
@@ -110,8 +110,7 @@ jobs:
           name: binaries
           path: |
             dist/*.tar.gz
-            dist/*.tar.gz.sha256
-            dist/sample.rubbish.cfg
+            dist/*.tar.gz.sha256  
 
   release:
     name: Create GitHub Release & upload assets
