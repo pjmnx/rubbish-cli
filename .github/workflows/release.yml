@@ -124,8 +124,9 @@ jobs:
       - name: Download built artifacts
         uses: actions/download-artifact@v4
         with:
-          name: binaries_${{ github.ref_name }}_${{ matrix.os }}_${{ matrix.arch }}
+          pattern: binaries_${{ github.ref_name }}_*
           path: releasedist
+          merge-multiple: true
       - name: Create GitHub Release and attach artifacts
         uses: ncipollo/release-action@v1
         with:
