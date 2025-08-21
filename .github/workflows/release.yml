@@ -1,9 +1,10 @@
-name: Release (tag push)
+name: Release (pre-releases)
 
 on:
   push:
     tags:
-      - 'v*'         # run when you push a tag like "v1.2.3"
+      - 'v*-beta'         # run when you push a tag like "v1.2.3"
+      - 'v*-alpha'
 
 permissions:
   contents: write     # needed to create releases/upload assets
@@ -123,7 +124,7 @@ jobs:
       - name: Download built artifacts
         uses: actions/download-artifact@v4
         with:
-          name: binaries
+          name: binaries_${{ github.ref_name }}_${{ matrix.os }}_${{ matrix.arch }}
           path: releasedist
       - name: Create GitHub Release and attach artifacts
         uses: ncipollo/release-action@v1
@@ -137,4 +138,4 @@ jobs:
             - sample.rubbish.cfg (install to /etc/rubbish/config.cfg)
           artifacts: "releasedist/**"
           draft: false
-          prerelease: false
+          prerelease: true
