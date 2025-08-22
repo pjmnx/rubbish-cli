@@ -22,27 +22,53 @@ Trash management for the terminal. Rubbish is a safe alternative to `rm`: instea
 
 ## Install
 
-Prereqs: Go 1.20+ (module targets newer Go in `go.mod`).
+Prereqs: On install host, curl and tar. For building from source: Go 1.20+ (module targets newer Go in `go.mod`).
 
-- Prebuilt binaries (recommended)
+- Install script (recommended)
+
+	One-liner to detect your OS/arch, download the correct asset, install the binary to `/usr/local/bin`, and place a sample config at `/etc/rubbish/config.cfg` (won't overwrite an existing file):
+
+	```bash
+	curl -fsSL https://pjmnx.github.io/rubbish-cli/install.sh | bash
+	```
+
+	Options:
+
+	```bash
+	# Latest pre-release (alpha/beta)
+	curl -fsSL https://pjmnx.github.io/rubbish-cli/install.sh | bash -s -- --pre
+
+	# Specific version tag
+	curl -fsSL https://pjmnx.github.io/rubbish-cli/install.sh | bash -s -- --version v1.2.3
+
+	# Install user config instead of /etc (writes to ~/.config/rubbish.cfg)
+	curl -fsSL https://pjmnx.github.io/rubbish-cli/install.sh | bash -s -- --user-config
+
+	# Custom prefix (binary goes to <prefix>/bin)
+	curl -fsSL https://pjmnx.github.io/rubbish-cli/install.shcl | bash -s -- --prefix /opt
+	```
+
+	The instalation script also create an alias `alias toss='rubbish toss'` to simplify the usage.
+
+- Prebuilt binaries (manual)
 
 	Download the latest release for your OS/arch from the Releases page, then install:
 
-```bash
-# 1) Download from https://github.com/pjmnx/rubbish-cli/releases
-# 2) Make executable and move into PATH
-chmod +x rubbish_<os>_<arch>
-sudo mv rubbish_<os>_<arch> /usr/local/bin/rubbish
-rubbish --version
-```
+	```bash
+	# 1) Download from https://github.com/pjmnx/rubbish-cli/releases
+	# 2) Make executable and move into PATH
+	chmod +x rubbish_<os>_<arch>
+	sudo mv rubbish_<os>_<arch> /usr/local/bin/rubbish
+	rubbish --version
+	```
 
 - From source
 
-```bash
-git clone https://github.com/pjmnx/rubbish-cli.git
-cd rubbish-cli
-go build -o bin/rubbish .
-```
+	```bash
+	git clone https://github.com/pjmnx/rubbish-cli.git
+	cd rubbish-cli
+	go build -o bin/rubbish .
+	```
 
 Optionally put it on PATH:
 

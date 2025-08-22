@@ -1,10 +1,9 @@
-name: Release (pre-releases)
+name: Release automation
 
 on:
   push:
     tags:
-      - 'v*-beta'         # run when you push a tag like "v1.2.3"
-      - 'v*-alpha'
+      - 'v*'         # run when you push a tag like "v1.2.3"
 
 permissions:
   contents: write     # needed to create releases/upload assets
@@ -139,4 +138,4 @@ jobs:
             - sample.rubbish.cfg (install to /etc/rubbish/config.cfg)
           artifacts: "releasedist/**"
           draft: false
-          prerelease: true
+          prerelease: false
