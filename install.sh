@@ -20,7 +20,7 @@ VERSION=""         # empty -> latest
 
 usage() {
   cat <<EOF
-Usage: curl -fsSL https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/scripts/install.sh | bash -s -- [options]
+Usage: curl -fsSL https://${REPO_OWNER}.github.io/${REPO_NAME}/install.sh | bash -s -- [options]
 
 Options:
   --version <tag>     Install specific tag (e.g., v1.2.3). Defaults to latest ${CHANNEL}.
@@ -146,7 +146,10 @@ fi
 BASE="${APP_NAME}_${VERSION}_${GOOS}_${GOARCH}"
 TARBALL="${BASE}.tar.gz"
 DL_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${VERSION}/${TARBALL}"
+PAGES_SAMPLE_URL="https://${REPO_OWNER}.github.io/${REPO_NAME}/sample.rubbigsh.cfg"
+PAGES_SAMPLE_URL_ALT="https://${REPO_OWNER}.github.io/${REPO_NAME}/sample.rubbish.cfg"
 SAMPLE_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${VERSION}/sample.rubbish.cfg"
+SAMPLE_URL_ALT="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${VERSION}/sample.rubbigsh.cfg"
 
 # Prepare temp dir
 WORKDIR="$(mktemp -d)"
@@ -181,42 +184,50 @@ else
 fi
 
 echo_step "Installing sample config to ${CONFIG_TARGET} (won't overwrite existing)"
-# Prefer the separately attached asset if available (skip network in dry-run)
-if ! $dryrun && curl -fsI "$SAMPLE_URL" >/dev/null 2>&1; then
-  echo_step "Downloading sample.rubbish.cfg from release"
-  if $dryrun; then echo "curl -fL -o sample.rubbish.cfg ${SAMPLE_URL}"; else curl -fL -o sample.rubbish.cfg "$SAMPLE_URL"; fi
-  SRC_CFG="sample.rubbish.cfg"
-else
-  SRC_CFG="$SRC_DIR/sample.rubbish.cfg"
+# Prefer GitHub Pages-hosted sample config first (skip network in dry-run)
+SRC_CFG=""
+if ! $dryrun; then
+  for url in "$PAGES_SAMPLE_URL" "$PAGES_SAMPLE_URL_ALT"; do
+    if curl -fsI "$url" >/dev/null 2>&1; then
+      echo_step "Downloading sample config from Pages: $url"
+      curl -fsSL -o sample.cfg "$url"
+      SRC_CFG="sample.cfg"
+      break
+    fi
+  done
+fi
+if [[ -z "$SRC_CFG" ]] && ! $dryrun; then
+  # Fallback to release asset(s)
+  for url in "$SAMPLE_URL" "$SAMPLE_URL_ALT"; do
+    if curl -fsI "$url" >/dev/null 2>&1; then
+      echo_step "Downloading sample config from Release: $url"
+      curl -fsSL -o sample.cfg "$url"
+      SRC_CFG="sample.cfg"
+      break
+    fi
+  done
+fi
+if [[ -z "$SRC_CFG" ]]; then
+  # Final fallback to any sample inside the archive
+  if [[ -f "$SRC_DIR/sample.rubbish.cfg" ]]; then
+    SRC_CFG="$SRC_DIR/sample.rubbish.cfg"
+  elif [[ -f "$SRC_DIR/sample.rubbigsh.cfg" ]]; then
+    SRC_CFG="$SRC_DIR/sample.rubbigsh.cfg"
+  fi
 fi
 
 if $dryrun; then echo "$mkcfg_cmd"; echo "cp -n \"$SRC_CFG\" \"$CONFIG_TARGET\" || true"; else
   eval "$mkcfg_cmd"
   # shellcheck disable=SC2086
-  if [[ -f "$SRC_CFG" ]]; then
+  if [[ -n "$SRC_CFG" && -f "$SRC_CFG" ]]; then
     if $user_config; then
       cp -n "$SRC_CFG" "$CONFIG_TARGET" || true
     else
       $SUDO cp -n "$SRC_CFG" "$CONFIG_TARGET" || true
     fi
   else
-    if $user_config; then
-      echo "[DEFAULT]
-wipeout_time = 30
-container_path = ~/.local/share/rubbish
-[notifications]
-enabled = false
-days_in_advance = 3
-timeout = 5" | tee "$CONFIG_TARGET" >/dev/null
-    else
-      echo "[DEFAULT]
-wipeout_time = 30
-container_path = ~/.local/share/rubbish
-[notifications]
-enabled = false
-days_in_advance = 3
-timeout = 5" | $SUDO tee "$CONFIG_TARGET" >/dev/null
-    fi
+    echo_err "Sample config not found online or in archive; skipping config install."
+    echo "You can place one later at: $CONFIG_TARGET"
   fi
 fi
 
