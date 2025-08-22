@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>rubbish-cli</title>
+  <meta name="description" content="Minimal GitHub Pages for rubbish-cli installer link and docs.">
+  <style>
+    :root { --bg:#0f172a; --fg:#e2e8f0; --muted:#94a3b8; --accent:#22c55e; }
+    *{box-sizing:border-box} body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--fg);}
+    header{padding:2rem 1rem;text-align:center}
+    h1{margin:0;font-size:2rem}
+    main{max-width:800px;margin:0 auto;padding:1rem}
+    code,pre{background:#0b1220;color:#d1d5db;border:1px solid #1f2937;border-radius:8px}
+    pre{padding:1rem;overflow:auto}
+    a{color:#93c5fd}
+    .card{border:1px solid #1f2937;border-radius:12px;padding:1rem;background:#0b1220}
+    .muted{color:var(--muted)}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>rubbish-cli</h1>
+    <p class="muted">Trash for your terminal — safe delete with restore and retention</p>
+  </header>
+  <main>
+    <section class="card">
+      <h2>Quick install</h2>
+      <p>Run the installer script (auditable <a href="https://github.com/pjmnx/rubbish-cli/blob/main/scripts/install.sh">here</a>):</p>
+      <pre><code>curl -fsSL https://pjmnx.github.io/rubbish-cli/install.sh | bash</code></pre>
+      <p class="muted">Tip: Pin to a tag for reproducibility:</p>
+      <pre><code>curl -fsSL https://pjmnx.github.io/rubbish-cli/install.sh | bash -s -- --version v1.2.3</code></pre>
+      <p class="muted">Install user config instead of /etc (writes to ~/.config/rubbish.cfg):</p>
+      <pre><code>curl -fsSL https://pjmnx.github.io/rubbish-cli/install.sh | bash -s -- --user-config</code></pre>
+      <p class="muted">Custom prefix (binary goes to &lt;prefix&gt;/bin):</p>
+      <pre><code>curl -fsSL https://pjmnx.github.io/rubbish-cli/install.sh | bash -s -- --prefix /opt</code></pre>
+    </section>
+    <section class="card" style="margin-top:1rem">
+      <h2>Project</h2>
+      <ul>
+        <li><a href="https://github.com/pjmnx/rubbish-cli">Repository</a></li>
+        <li><a href="https://github.com/pjmnx/rubbish-cli/releases">Releases</a></li>
+        <li><a href="https://github.com/pjmnx/rubbish-cli/blob/main/README.md">README</a></li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>
