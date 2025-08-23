@@ -71,9 +71,11 @@ func Load(paths []string) (*Config, error) {
 		return nil, fmt.Errorf("failed to load configuration: %w", err)
 	}
 	// Load complemetary file from user's home directory
-	err = cfg.Append(paths[1])
-	if err != nil {
-		return nil, fmt.Errorf("failed to append user configuration: %w", err)
+	if len(paths) > 1 {
+		err = cfg.Append(paths[1])
+		if err != nil && !os.IsNotExist(err) {
+			return nil, fmt.Errorf("failed to append user configuration: %w", err)
+		}
 	}
 
 	// Creating a default configuration if the file is empty
