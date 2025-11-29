@@ -8,6 +8,8 @@ import (
 	"path"
 	"path/filepath"
 	"rubbish/config"
+	"slices"
+	"syscall"
 	"time"
 )
 
@@ -93,7 +95,6 @@ func Command(args []string, cfg *config.Config) error {
 }
 
 func NameSufix(size uint) string {
-	// const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	b := make([]byte, size)
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -103,7 +104,149 @@ func NameSufix(size uint) string {
 	return string(b)
 }
 
+// func userHasOwnership(stat *syscall.Stat_t) bool {
+// 	currentUID := os.Getuid()
+// 	currentGID := os.Getgid()
+// 	return stat.Uid == uint32(currentUID) || stat.Gid == uint32(currentGID)
+// }
+
+// func validateAccessOld(item string) error {
+// 	info, err := os.Stat(item)
+// 	if err != nil {
+// 		return fmt.Errorf("cannot access item %s: %w", item, err)
+// 	}
+
+// 	// Check write permission based on file mode
+// 	if info.Mode().Perm()&0200 == 0 {
+// 		return fmt.Errorf("no write permission for item %s", item)
+// 	}
+
+// 	// Get file system statistics
+// 	stat, ok := info.Sys().(*syscall.Stat_t)
+// 	if !ok {
+// 		return fmt.Errorf("cannot get detailed file information for %s", item)
+// 	}
+
+// 	// Check user and group ownership
+// 	if !userHasOwnership(stat) {
+// 		return fmt.Errorf("you don't have ownership of %s", item)
+// 	}
+
+// 	return nil
+// }
+
+func validateParentDirAccess(item string) error {
+	parentDir := filepath.Dir(item)
+	uid := os.Getuid()
+	gid := os.Getgid()
+
+	info, err := os.Stat(parentDir)
+	if err != nil {
+		return fmt.Errorf("cannot access parent directory of %s: %w", item, err)
+	}
+
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return fmt.Errorf("failed to get parent directory system info")
+	}
+
+	parentUID := int(stat.Uid)
+	parentGID := int(stat.Gid)
+	parentMode := info.Mode()
+
+	// Check parent directory write permission
+	if uid == parentUID && parentMode&0200 != 0 {
+		return nil
+	}
+
+	inGroup := gid == parentGID
+	{
+		suppGroups, err := os.Getgroups()
+		if err != nil {
+			return fmt.Errorf("failed to get supplementary groups: %w", err)
+		}
+		if slices.Contains(suppGroups, parentGID) {
+			inGroup = true
+		}
+	}
+
+	if inGroup && parentMode&0020 != 0 {
+		return nil
+	}
+
+	if parentMode&0002 != 0 {
+		return nil
+	}
+
+	return fmt.Errorf("no write permission for parent directory of %s", item)
+}
+
+func validateAccess(item string) error {
+	// Getting the current user ID and group ID
+	uid := os.Getuid()
+	gid := os.Getgid()
+
+	if uid == 0 {
+		// Root user has access to everything
+		return nil
+	}
+
+	// Get file wonership and permissions
+	info, err := os.Stat(item)
+	if err != nil {
+		return fmt.Errorf("cannot access item %s: %w", item, err)
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return fmt.Errorf("cannot get detailed file information for %s", item)
+	}
+	fileUid := int(stat.Uid)
+	fileGid := int(stat.Gid)
+	fileMode := info.Mode().Perm()
+
+	// Check if user is the owner
+	if uid == fileUid {
+		// Owner needs write permission
+		if fileMode&0200 != 0 {
+			return validateParentDirAccess(item)
+		}
+		return fmt.Errorf("no write permission for item %s", item)
+	}
+
+	// Check if user is in the same group
+	inGroup := fileGid == gid
+
+	if !inGroup {
+		suppGroups, err := os.Getgroups()
+		if err != nil {
+			return fmt.Errorf("failed to get supplementary groups: %w", err)
+		}
+		if slices.Contains(suppGroups, fileGid) {
+			inGroup = true
+		}
+	}
+
+	if inGroup {
+		// Group member needs group write permission
+		if fileMode&0020 != 0 {
+			return validateParentDirAccess(item)
+		}
+		return fmt.Errorf("group does not have write permission")
+	}
+
+	// Check others permission
+	if fileMode&0002 != 0 {
+		return validateParentDirAccess(item)
+	}
+
+	return fmt.Errorf("user is not owner and not in group")
+}
+
 func Toss(item string, cfg *config.Config) error {
+	if err := validateAccess(item); err != nil {
+		return err
+	}
+
 	destination := path.Join(cfg.ContainerPath, filepath.Base(item+"_"+NameSufix(6)))
 
 	if err := cfg.Journal.AddFileByName(filepath.Base(destination), item, cfg.WipeoutTime); err != nil {
