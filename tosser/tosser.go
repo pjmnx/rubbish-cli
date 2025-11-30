@@ -8,6 +8,8 @@ import (
 	"path"
 	"path/filepath"
 	"rubbish/config"
+	"slices"
+	"syscall"
 	"time"
 )
 
@@ -93,7 +95,6 @@ func Command(args []string, cfg *config.Config) error {
 }
 
 func NameSufix(size uint) string {
-	// const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	b := make([]byte, size)
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -103,7 +104,89 @@ func NameSufix(size uint) string {
 	return string(b)
 }
 
+// checkWritePermission checks if the current user has write permission on the given file info.
+// It returns true if write permission is granted, false otherwise.
+func checkWritePermission(uid, gid int, fileUID, fileGID int, mode os.FileMode) bool {
+	// Check owner write permission
+	if uid == fileUID && mode&0200 != 0 {
+		return true
+	}
+
+	// Check group write permission
+	inGroup := gid == fileGID
+	if !inGroup {
+		suppGroups, err := os.Getgroups()
+		if err == nil && slices.Contains(suppGroups, fileGID) {
+			inGroup = true
+		}
+	}
+
+	if inGroup && mode&0020 != 0 {
+		return true
+	}
+
+	// Check others write permission
+	return mode&0002 != 0
+}
+
+func validateParentDirAccess(item string, uid, gid int) error {
+	parentDir := filepath.Dir(item)
+
+	info, err := os.Stat(parentDir)
+	if err != nil {
+		return fmt.Errorf("cannot access parent directory of %s: %w", item, err)
+	}
+
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return fmt.Errorf("failed to get parent directory system info")
+	}
+
+	if !checkWritePermission(uid, gid, int(stat.Uid), int(stat.Gid), info.Mode()) {
+		return fmt.Errorf("no write permission for parent directory of %s", item)
+	}
+
+	return nil
+}
+
+func validateAccess(item string) error {
+	// Getting the current user ID and group ID
+	uid := os.Getuid()
+	gid := os.Getgid()
+
+	if uid == 0 {
+		// Root user has access to everything
+		return nil
+	}
+
+	// Get file ownership and permissions
+	info, err := os.Stat(item)
+	if err != nil {
+		return fmt.Errorf("cannot access item %s: %w", item, err)
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return fmt.Errorf("cannot get detailed file information for %s", item)
+	}
+
+	fileUID := int(stat.Uid)
+	fileGID := int(stat.Gid)
+	fileMode := info.Mode().Perm()
+
+	// Check if user has write permission on the file
+	if !checkWritePermission(uid, gid, fileUID, fileGID, fileMode) {
+		return fmt.Errorf("no write permission for item %s", item)
+	}
+
+	// Check if user has write permission on the parent directory
+	return validateParentDirAccess(item, uid, gid)
+}
+
 func Toss(item string, cfg *config.Config) error {
+	if err := validateAccess(item); err != nil {
+		return err
+	}
+
 	destination := path.Join(cfg.ContainerPath, filepath.Base(item+"_"+NameSufix(6)))
 
 	if err := cfg.Journal.AddFileByName(filepath.Base(destination), item, cfg.WipeoutTime); err != nil {
