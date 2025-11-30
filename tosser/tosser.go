@@ -104,41 +104,33 @@ func NameSufix(size uint) string {
 	return string(b)
 }
 
-// func userHasOwnership(stat *syscall.Stat_t) bool {
-// 	currentUID := os.Getuid()
-// 	currentGID := os.Getgid()
-// 	return stat.Uid == uint32(currentUID) || stat.Gid == uint32(currentGID)
-// }
+// checkWritePermission checks if the current user has write permission on the given file info.
+// It returns true if write permission is granted, false otherwise.
+func checkWritePermission(uid, gid int, fileUID, fileGID int, mode os.FileMode) bool {
+	// Check owner write permission
+	if uid == fileUID && mode&0200 != 0 {
+		return true
+	}
 
-// func validateAccessOld(item string) error {
-// 	info, err := os.Stat(item)
-// 	if err != nil {
-// 		return fmt.Errorf("cannot access item %s: %w", item, err)
-// 	}
+	// Check group write permission
+	inGroup := gid == fileGID
+	if !inGroup {
+		suppGroups, err := os.Getgroups()
+		if err == nil && slices.Contains(suppGroups, fileGID) {
+			inGroup = true
+		}
+	}
 
-// 	// Check write permission based on file mode
-// 	if info.Mode().Perm()&0200 == 0 {
-// 		return fmt.Errorf("no write permission for item %s", item)
-// 	}
+	if inGroup && mode&0020 != 0 {
+		return true
+	}
 
-// 	// Get file system statistics
-// 	stat, ok := info.Sys().(*syscall.Stat_t)
-// 	if !ok {
-// 		return fmt.Errorf("cannot get detailed file information for %s", item)
-// 	}
+	// Check others write permission
+	return mode&0002 != 0
+}
 
-// 	// Check user and group ownership
-// 	if !userHasOwnership(stat) {
-// 		return fmt.Errorf("you don't have ownership of %s", item)
-// 	}
-
-// 	return nil
-// }
-
-func validateParentDirAccess(item string) error {
+func validateParentDirAccess(item string, uid, gid int) error {
 	parentDir := filepath.Dir(item)
-	uid := os.Getuid()
-	gid := os.Getgid()
 
 	info, err := os.Stat(parentDir)
 	if err != nil {
@@ -150,35 +142,11 @@ func validateParentDirAccess(item string) error {
 		return fmt.Errorf("failed to get parent directory system info")
 	}
 
-	parentUID := int(stat.Uid)
-	parentGID := int(stat.Gid)
-	parentMode := info.Mode()
-
-	// Check parent directory write permission
-	if uid == parentUID && parentMode&0200 != 0 {
-		return nil
+	if !checkWritePermission(uid, gid, int(stat.Uid), int(stat.Gid), info.Mode()) {
+		return fmt.Errorf("no write permission for parent directory of %s", item)
 	}
 
-	inGroup := gid == parentGID
-	{
-		suppGroups, err := os.Getgroups()
-		if err != nil {
-			return fmt.Errorf("failed to get supplementary groups: %w", err)
-		}
-		if slices.Contains(suppGroups, parentGID) {
-			inGroup = true
-		}
-	}
-
-	if inGroup && parentMode&0020 != 0 {
-		return nil
-	}
-
-	if parentMode&0002 != 0 {
-		return nil
-	}
-
-	return fmt.Errorf("no write permission for parent directory of %s", item)
+	return nil
 }
 
 func validateAccess(item string) error {
@@ -191,7 +159,7 @@ func validateAccess(item string) error {
 		return nil
 	}
 
-	// Get file wonership and permissions
+	// Get file ownership and permissions
 	info, err := os.Stat(item)
 	if err != nil {
 		return fmt.Errorf("cannot access item %s: %w", item, err)
@@ -200,46 +168,18 @@ func validateAccess(item string) error {
 	if !ok {
 		return fmt.Errorf("cannot get detailed file information for %s", item)
 	}
-	fileUid := int(stat.Uid)
-	fileGid := int(stat.Gid)
+
+	fileUID := int(stat.Uid)
+	fileGID := int(stat.Gid)
 	fileMode := info.Mode().Perm()
 
-	// Check if user is the owner
-	if uid == fileUid {
-		// Owner needs write permission
-		if fileMode&0200 != 0 {
-			return validateParentDirAccess(item)
-		}
+	// Check if user has write permission on the file
+	if !checkWritePermission(uid, gid, fileUID, fileGID, fileMode) {
 		return fmt.Errorf("no write permission for item %s", item)
 	}
 
-	// Check if user is in the same group
-	inGroup := fileGid == gid
-
-	if !inGroup {
-		suppGroups, err := os.Getgroups()
-		if err != nil {
-			return fmt.Errorf("failed to get supplementary groups: %w", err)
-		}
-		if slices.Contains(suppGroups, fileGid) {
-			inGroup = true
-		}
-	}
-
-	if inGroup {
-		// Group member needs group write permission
-		if fileMode&0020 != 0 {
-			return validateParentDirAccess(item)
-		}
-		return fmt.Errorf("group does not have write permission")
-	}
-
-	// Check others permission
-	if fileMode&0002 != 0 {
-		return validateParentDirAccess(item)
-	}
-
-	return fmt.Errorf("user is not owner and not in group")
+	// Check if user has write permission on the parent directory
+	return validateParentDirAccess(item, uid, gid)
 }
 
 func Toss(item string, cfg *config.Config) error {
