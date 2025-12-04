@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"rubbish/config"
 	"rubbish/journal"
@@ -57,8 +58,8 @@ func Command(args []string, cfg *config.Config) error {
 	return nil
 }
 
-// confirmWipe prompts the user for confirmation before wiping an item, unless autoAcknowledge is true.
-func confirmWipe(item string) (bool, error) {
+// confirm prompts the user for confirmation before wiping an item, unless autoAcknowledge is true.
+func confirm(item string) (bool, error) {
 	if autoAcknowledge {
 		return true, nil
 	}
@@ -112,33 +113,39 @@ func getRecords(cfg *config.Config, global bool, ignoreWipeTime bool) ([]*journa
 }
 
 func wipeSelectedFiles(records []*journal.MetaData, files []string, cfg *config.Config) error {
-	for _, file := range files {
-		i := slices.IndexFunc(records, func(record *journal.MetaData) bool {
-			return record.Item == file
-		})
+	var record *journal.MetaData
 
-		if i == -1 {
-			return fmt.Errorf("file %s not found in the rubbish", file)
+	for _, file := range files {
+		record = nil
+		_ = slices.IndexFunc(records, func(element *journal.MetaData) bool {
+			if element.Item == path.Base(file) {
+				record = element
+				return false
+			}
+			return true
+		})
+		if record == nil {
+			return fmt.Errorf("file (%s) not found in the dumpster", file)
 		}
 
-		wipeConfirmed, err := confirmWipe(records[i].Item)
+		wipeConfirmed, err := confirm(record.Item)
 		if err != nil {
-			return fmt.Errorf("error confirming wipe for %s: %v", records[i].Item, err)
+			return fmt.Errorf("error confirming wipe for %s: %v", record.Item, err)
 		}
 		if !wipeConfirmed {
-			fmt.Printf("Skipping %s as per user confirmation.\n", records[i].Item)
+			fmt.Printf("Skipping %s as per user confirmation.\n", record.Item)
 			continue
 		}
 
-		if err := executeWipe(records[i], cfg); err != nil {
-			fmt.Printf("Error wiping %s: %v\n", records[i].Item, err)
+		if err := wipeItem(record, cfg); err != nil {
+			fmt.Printf("Error wiping %s: %v\n", record.Item, err)
 		}
 	}
 
 	return nil
 }
 
-func executeWipe(record *journal.MetaData, cfg *config.Config) error {
+func wipeItem(record *journal.MetaData, cfg *config.Config) error {
 	if record == nil {
 		return fmt.Errorf("record is nil, cannot wipe")
 	}
@@ -165,7 +172,7 @@ func wipeAllFiles(records []*journal.MetaData, cfg *config.Config) error {
 
 	for _, record := range records {
 
-		wipeConfirmed, err := confirmWipe(record.Item)
+		wipeConfirmed, err := confirm(record.Item)
 		if err != nil {
 			return fmt.Errorf("error confirming wipe for %s: %v", record.Item, err)
 		}
@@ -175,7 +182,7 @@ func wipeAllFiles(records []*journal.MetaData, cfg *config.Config) error {
 			continue
 		}
 
-		if err := executeWipe(record, cfg); err != nil {
+		if err := wipeItem(record, cfg); err != nil {
 			fmt.Printf("Error wiping %s: %v\n", record.Item, err)
 		}
 	}
