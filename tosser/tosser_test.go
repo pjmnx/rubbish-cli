@@ -139,3 +139,198 @@ func TestCommand_InvalidArgs(t *testing.T) {
 		t.Fatalf("expected error for invalid path")
 	}
 }
+func TestValidateAccess_NonExistentFile(t *testing.T) {
+	cfg := newTestCfg(t)
+
+	// Test non-existent file
+	nonExistentPath := filepath.Join(cfg.ContainerPath, "nonexistent.txt")
+	err := validateAccess(nonExistentPath)
+	if err == nil {
+		t.Fatal("expected error for non-existent file")
+	}
+	if !strings.Contains(err.Error(), "cannot access item") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestValidateAccess_NoWritePermissionOnFile(t *testing.T) {
+	cfg := newTestCfg(t)
+
+	// Create a file without write permission for the current user
+	filePath := filepath.Join(cfg.WorkingDir, "readonly.txt")
+	if err := os.WriteFile(filePath, []byte("test"), 0o444); err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+	defer os.Chmod(filePath, 0o644)
+
+	// Current user should not have write permission
+	err := validateAccess(filePath)
+	if err == nil {
+		t.Fatal("expected error for no write permission on file")
+	}
+	if !strings.Contains(err.Error(), "no write permission") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestValidateAccess_NoWritePermissionOnParentDir(t *testing.T) {
+	cfg := newTestCfg(t)
+
+	// Create a subdirectory and file
+	subDir := filepath.Join(cfg.WorkingDir, "subdir")
+	if err := os.Mkdir(subDir, 0o755); err != nil {
+		t.Fatalf("failed to create subdirectory: %v", err)
+	}
+
+	filePath := filepath.Join(subDir, "test.txt")
+	if err := os.WriteFile(filePath, []byte("test"), 0o644); err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	// Remove write permission on parent directory
+	if err := os.Chmod(subDir, 0o555); err != nil {
+		t.Fatalf("failed to chmod subdir: %v", err)
+	}
+	defer os.Chmod(subDir, 0o755)
+
+	// validateAccess should fail due to no write permission on parent dir
+	err := validateAccess(filePath)
+	if err == nil {
+		t.Fatal("expected error for no write permission on parent directory")
+	}
+	if !strings.Contains(err.Error(), "no write permission for parent directory") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestValidateAccess_ValidFileWithWritePermission(t *testing.T) {
+	cfg := newTestCfg(t)
+
+	// Create a file with write permission
+	filePath := filepath.Join(cfg.WorkingDir, "writable.txt")
+	if err := os.WriteFile(filePath, []byte("test"), 0o644); err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	// validateAccess should succeed
+	err := validateAccess(filePath)
+	if err != nil {
+		t.Fatalf("unexpected error for valid file with write permission: %v", err)
+	}
+}
+
+func TestCheckWritePermission_OwnerWritePermission(t *testing.T) {
+	uid := os.Getuid()
+	gid := os.Getgid()
+
+	// Test owner with write permission
+	if !checkWritePermission(uid, gid, uid, gid, 0o644) {
+		t.Error("expected write permission for owner with mode 0644")
+	}
+
+	// Test owner without write permission
+	if checkWritePermission(uid, gid, uid, gid, 0o444) {
+		t.Error("expected no write permission for owner with mode 0444")
+	}
+}
+
+func TestCheckWritePermission_GroupWritePermission(t *testing.T) {
+	uid := os.Getuid()
+	gid := os.Getgid()
+
+	// Test group with write permission (non-owner)
+	if !checkWritePermission(uid, gid, uid+1, gid, 0o020) {
+		t.Error("expected write permission for group with mode 0020")
+	}
+
+	// Test group without write permission (non-owner)
+	if checkWritePermission(uid, gid, uid+1, gid, 0o000) {
+		t.Error("expected no write permission for group with mode 0000")
+	}
+}
+
+func TestCheckWritePermission_OthersWritePermission(t *testing.T) {
+	uid := os.Getuid()
+	gid := os.Getgid()
+
+	// Test others with write permission (not owner, not in group)
+	if !checkWritePermission(uid, gid, uid+1, gid+1, 0o002) {
+		t.Error("expected write permission for others with mode 0002")
+	}
+
+	// Test others without write permission
+	if checkWritePermission(uid, gid, uid+1, gid+1, 0o000) {
+		t.Error("expected no write permission for others with mode 0000")
+	}
+}
+
+func TestValidateParentDirAccess_ValidAccess(t *testing.T) {
+	cfg := newTestCfg(t)
+
+	// Create a file in a writable directory
+	filePath := filepath.Join(cfg.WorkingDir, "test.txt")
+	if err := os.WriteFile(filePath, []byte("test"), 0o644); err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	uid := os.Getuid()
+	gid := os.Getgid()
+
+	// validateParentDirAccess should succeed
+	err := validateParentDirAccess(filePath, uid, gid)
+	if err != nil {
+		t.Fatalf("unexpected error for valid parent directory access: %v", err)
+	}
+}
+
+func TestValidateParentDirAccess_NoPermission(t *testing.T) {
+	cfg := newTestCfg(t)
+
+	// Create a subdirectory
+	subDir := filepath.Join(cfg.WorkingDir, "readonly_subdir")
+	if err := os.Mkdir(subDir, 0o755); err != nil {
+		t.Fatalf("failed to create subdirectory: %v", err)
+	}
+
+	filePath := filepath.Join(subDir, "test.txt")
+	if err := os.WriteFile(filePath, []byte("test"), 0o644); err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	// Remove write permission on the directory
+	if err := os.Chmod(subDir, 0o555); err != nil {
+		t.Fatalf("failed to chmod subdir: %v", err)
+	}
+	defer os.Chmod(subDir, 0o755)
+
+	uid := os.Getuid()
+	gid := os.Getgid()
+
+	// validateParentDirAccess should fail
+	err := validateParentDirAccess(filePath, uid, gid)
+	if err == nil {
+		t.Fatal("expected error for no write permission on parent directory")
+	}
+	if !strings.Contains(err.Error(), "no write permission for parent directory") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestValidateParentDirAccess_NonExistentParentDir(t *testing.T) {
+	cfg := newTestCfg(t)
+
+	// Use a path with a non-existent parent directory
+	filePath := filepath.Join(cfg.WorkingDir, "nonexistent", "test.txt")
+
+	uid := os.Getuid()
+	gid := os.Getgid()
+
+	// validateParentDirAccess should fail
+	err := validateParentDirAccess(filePath, uid, gid)
+	if err == nil {
+		t.Fatal("expected error for non-existent parent directory")
+	}
+	if !strings.Contains(err.Error(), "cannot access parent directory") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
