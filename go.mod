@@ -5,9 +5,10 @@ module rubbish
 
 go 1.24.4
 
-require github.com/go-ini/ini v1.67.0
-
-require github.com/dgraph-io/badger/v4 v4.2.0
+require (
+	github.com/dgraph-io/badger/v4 v4.2.0
+	github.com/go-ini/ini v1.67.0
+)
 
 require (
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect

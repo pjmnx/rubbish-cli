@@ -235,6 +235,8 @@ func main() {
 		return
 	}
 
+	notifyExistingWipeables(cfg) // Notify about wipeable items in the dumpster
+
 	for _, cmd := range commands {
 		if cmd.Name == flag.Arg(0) {
 			cmd.Options.Parse(flag.Args()[1:])
@@ -246,5 +248,11 @@ func main() {
 				return
 			}
 		}
+	}
+}
+
+func notifyExistingWipeables(cfg *config.Config) {
+	if stats, err := cfg.Journal.FilterWipeable(); err == nil {
+		fmt.Printf("\033[33;1mNotice:\033[0m\033[33m Wipeable items in dumpster: %d\033[0m\n", len(stats))
 	}
 }
