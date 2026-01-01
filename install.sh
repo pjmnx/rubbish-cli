@@ -31,7 +31,7 @@ Options:
   --etc-dir <dir>     Config directory (default: ${ETC_DIR}).
   --user-config       Install config to user home (~/.config/rubbish.cfg) instead of /etc.
   --no-alias          Do not add shell alias: toss='rubbish toss'.
-  --no-sudo           Do not use sudo (installer avoids sudo by default for user-local installs).
+  --sudo              Force using sudo (even for user-local installs).
   --dry-run           Print actions without executing.
   -h, --help          Show this help.
 EOF
@@ -87,12 +87,16 @@ require tar
 require curl
 
 # Add shell alias: toss => 'rubbish toss'
-add_shell_alias() {
-  local user_name user_home shell_name rc_file alias_line
+add_aliases() {
+  local user_name user_home shell_name rc_file alias_line fish_block
   user_name="${SUDO_USER:-$USER}"
   # Resolve the home of the invoking user (not root when using sudo)
   user_home=$(eval echo "~$user_name")
   shell_name="${SHELL##*/}"
+
+  alias_line="alias toss='rubbish toss'"
+  fish_block=$'function toss\n  rubbish toss $argv\nend'
+
   case "$shell_name" in
     zsh) rc_file="$user_home/.zshrc" ;;
     bash)
@@ -101,23 +105,44 @@ add_shell_alias() {
         rc_file="$user_home/.bash_profile"
       fi
       ;;
+    fish)
+      rc_file="$user_home/.config/fish/config.fish"
+      ;;
     *) rc_file="$user_home/.profile" ;;
   esac
-  alias_line="alias toss='rubbish toss'"
+
   if $dryrun; then
-    echo "Would append alias to $rc_file: $alias_line"
+    if [[ "$shell_name" == "fish" ]]; then
+      echo "Would append function to $rc_file:\n$fish_block"
+    else
+      echo "Would append alias to $rc_file: $alias_line"
+    fi
     return 0
   fi
+
   mkdir -p "$(dirname "$rc_file")"
-  if [[ -f "$rc_file" ]] && grep -Fq "$alias_line" "$rc_file"; then
-    echo_step "Shell alias already present in $rc_file"
+  if [[ "$shell_name" == "fish" ]]; then
+    if [[ -f "$rc_file" ]] && grep -Fq "function toss" "$rc_file"; then
+      echo_step "Fish function already present in $rc_file"
+    else
+      {
+        echo
+        echo "# Added by rubbish installer on $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+        echo "$fish_block"
+      } >> "$rc_file"
+      echo_step "Added fish function to $rc_file. Reload your shell or run: source \"$rc_file\""
+    fi
   else
-    {
-      echo
-      echo "# Added by rubbish installer on $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-      echo "$alias_line"
-    } >> "$rc_file"
-    echo_step "Added shell alias to $rc_file. Reload your shell or run: source \"$rc_file\""
+    if [[ -f "$rc_file" ]] && grep -Fq "$alias_line" "$rc_file"; then
+      echo_step "Shell alias already present in $rc_file"
+    else
+      {
+        echo
+        echo "# Added by rubbish installer on $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+        echo "$alias_line"
+      } >> "$rc_file"
+      echo_step "Added shell alias to $rc_file. Reload your shell or run: source \"$rc_file\""
+    fi
   fi
 }
 
@@ -273,7 +298,7 @@ fi
 
 # Add convenient 'toss' alias unless disabled
 if $add_alias; then
-  add_shell_alias || true
+  add_aliases || true
 fi
 
 # Cleanup handled by trap
