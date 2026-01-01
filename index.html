@@ -28,6 +28,8 @@
       <h2>Quick install</h2>
       <p>Run the installer script (auditable <a href="https://github.com/pjmnx/rubbish-cli/blob/main/scripts/install.sh">here</a>):</p>
       <pre><code>curl -fsSL https://pjmnx.github.io/rubbish-cli/install.sh | bash</code></pre>
+      <p class="muted">By default the installer places the binary in <code>~/.local/bin</code>. If that directory is not on your PATH, add it:</p>
+      <pre><code>export PATH="$HOME/.local/bin:$PATH"</code></pre>
       <p class="muted">Tip: Pin to a tag for reproducibility:</p>
       <pre><code>curl -fsSL https://pjmnx.github.io/rubbish-cli/install.sh | bash -s -- --version v1.2.3</code></pre>
       <p class="muted">Install user config instead of /etc (writes to ~/.config/rubbish.cfg):</p>

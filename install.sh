@@ -4,14 +4,15 @@ set -euo pipefail
 # rubbish installer
 # - Detect OS/ARCH
 # - Download matching release tarball from GitHub
-# - Install binary to /usr/local/bin (or custom prefix)
+# - Install binary to $HOME/.local/bin (or custom prefix)
 # - Install sample config to /etc/rubbish/config.cfg (or user path)
 # - Clean up temp files
 
 REPO_OWNER="pjmnx"
 REPO_NAME="rubbish-cli"
 APP_NAME="rubbish"
-PREFIX="/usr/local"
+# Default to user-local bin so installs don't require root: $HOME/.local/bin
+PREFIX="$HOME/.local"
 BIN_DIR="$PREFIX/bin"
 ETC_DIR="/etc/rubbish"
 CONFIG_TARGET="$ETC_DIR/config.cfg"
@@ -30,7 +31,7 @@ Options:
   --etc-dir <dir>     Config directory (default: ${ETC_DIR}).
   --user-config       Install config to user home (~/.config/rubbish.cfg) instead of /etc.
   --no-alias          Do not add shell alias: toss='rubbish toss'.
-  --no-sudo           Do not use sudo (assumes you have permissions).
+  --no-sudo           Do not use sudo (installer avoids sudo by default for user-local installs).
   --dry-run           Print actions without executing.
   -h, --help          Show this help.
 EOF
@@ -44,32 +45,40 @@ echo_step() { echo "==> $*"; }
 
 echo_err() { echo "[error] $*" >&2; }
 
+
 dryrun=false
-use_sudo=true
+use_sudo=false
 user_config=false
 add_alias=true
 
-# Parse args
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --version) VERSION="$2"; shift 2 ;;
-    --pre) CHANNEL="pre"; shift ;;
-    --prefix) PREFIX="$2"; BIN_DIR="$PREFIX/bin"; shift 2 ;;
-    --bin-dir) BIN_DIR="$2"; shift 2 ;;
-    --etc-dir) ETC_DIR="$2"; CONFIG_TARGET="$ETC_DIR/config.cfg"; shift 2 ;;
-    --user-config) user_config=true; shift ;;
-  --no-alias) add_alias=false; shift ;;
-    --no-sudo) use_sudo=false; shift ;;
-    --dry-run) dryrun=true; shift ;;
-    -h|--help) usage; exit 0 ;;
-    *) echo_err "Unknown option: $1"; usage; exit 1 ;;
-  esac
-done
+main() {
+  # Parse args
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --version) VERSION="$2"; shift 2 ;;
+      --pre) CHANNEL="pre"; shift ;;
+      --prefix) PREFIX="$2"; BIN_DIR="$PREFIX/bin"; shift 2 ;;
+      --bin-dir) BIN_DIR="$2"; shift 2 ;;
+      --etc-dir) ETC_DIR="$2"; CONFIG_TARGET="$ETC_DIR/config.cfg"; shift 2 ;;
+      --user-config) user_config=true; shift ;;
+    --no-alias) add_alias=false; shift ;;
+      --sudo) use_sudo=true; shift ;;
+      --dry-run) dryrun=true; shift ;;
+      -h|--help) usage; exit 0 ;;
+      *) echo_err "Unknown option: $1"; usage; exit 1 ;;
+    esac
+  done
 
-SUDO=""
-if $use_sudo; then
-  if [[ $EUID -ne 0 ]]; then SUDO="sudo"; fi
-fi
+  SUDO=""
+  # If the target bin dir is inside the user's home, don't use sudo
+  if [[ "$BIN_DIR" == "$HOME"* ]]; then
+    use_sudo=false
+  fi
+  if $use_sudo; then
+    if [[ $EUID -ne 0 ]]; then
+      SUDO="sudo"
+    fi
+  fi
 
 # Requirements
 require uname
@@ -166,21 +175,31 @@ if $dryrun; then echo "tar -xzf ${TARBALL}"; else tar -xzf "$TARBALL"; fi
 if [[ -d "${BASE}" ]]; then SRC_DIR="${BASE}"; else SRC_DIR="."; fi
 
 # Install binary
-mkdir_cmd="$SUDO mkdir -p \"$BIN_DIR\""
-install_cmd="$SUDO install -m 0755 \"$SRC_DIR/${APP_NAME}\" \"$BIN_DIR/${APP_NAME}\""
-
 echo_step "Installing binary to ${BIN_DIR}"
-if $dryrun; then echo "$mkdir_cmd"; echo "$install_cmd"; else eval "$mkdir_cmd"; eval "$install_cmd"; fi
+if $dryrun; then
+  if [[ -n "$SUDO" ]]; then
+    echo "$SUDO mkdir -p \"$BIN_DIR\""
+    echo "$SUDO install -m 0755 \"$SRC_DIR/${APP_NAME}\" \"$BIN_DIR/${APP_NAME}\""
+  else
+    echo "mkdir -p \"$BIN_DIR\""
+    echo "install -m 0755 \"$SRC_DIR/${APP_NAME}\" \"$BIN_DIR/${APP_NAME}\""
+  fi
+else
+  if [[ -n "$SUDO" ]]; then
+    $SUDO mkdir -p "$BIN_DIR"
+    $SUDO install -m 0755 "$SRC_DIR/${APP_NAME}" "$BIN_DIR/${APP_NAME}"
+  else
+    mkdir -p "$BIN_DIR"
+    install -m 0755 "$SRC_DIR/${APP_NAME}" "$BIN_DIR/${APP_NAME}"
+  fi
+fi
 
 # Install config
 if $user_config; then
   CONFIG_TARGET="$HOME/.config/rubbish.cfg"
   CONFIG_DIR="$(dirname "$CONFIG_TARGET")"
-  mkcfg_cmd="mkdir -p \"$CONFIG_DIR\""
-  copycfg_cmd="cp -n \"$SRC_DIR/sample.rubbish.cfg\" \"$CONFIG_TARGET\" || true"
 else
-  mkcfg_cmd="$SUDO mkdir -p \"$ETC_DIR\""
-  copycfg_cmd="$SUDO cp -n \"$SRC_DIR/sample.rubbish.cfg\" \"$CONFIG_TARGET\" || true"
+  CONFIG_DIR="$ETC_DIR"
 fi
 
 echo_step "Installing sample config to ${CONFIG_TARGET} (won't overwrite existing)"
@@ -216,14 +235,29 @@ if [[ -z "$SRC_CFG" ]]; then
   fi
 fi
 
-if $dryrun; then echo "$mkcfg_cmd"; echo "cp -n \"$SRC_CFG\" \"$CONFIG_TARGET\" || true"; else
-  eval "$mkcfg_cmd"
-  # shellcheck disable=SC2086
+if $dryrun; then
+  if [[ -n "$SUDO" && "$user_config" != true ]]; then
+    echo "$SUDO mkdir -p \"$CONFIG_DIR\""
+    echo "$SUDO cp -n \"$SRC_CFG\" \"$CONFIG_TARGET\" || true"
+  else
+    echo "mkdir -p \"$CONFIG_DIR\""
+    echo "cp -n \"$SRC_CFG\" \"$CONFIG_TARGET\" || true"
+  fi
+else
+  if [[ -n "$SUDO" && "$user_config" != true ]]; then
+    $SUDO mkdir -p "$CONFIG_DIR"
+  else
+    mkdir -p "$CONFIG_DIR"
+  fi
   if [[ -n "$SRC_CFG" && -f "$SRC_CFG" ]]; then
     if $user_config; then
       cp -n "$SRC_CFG" "$CONFIG_TARGET" || true
     else
-      $SUDO cp -n "$SRC_CFG" "$CONFIG_TARGET" || true
+      if [[ -n "$SUDO" ]]; then
+        $SUDO cp -n "$SRC_CFG" "$CONFIG_TARGET" || true
+      else
+        cp -n "$SRC_CFG" "$CONFIG_TARGET" || true
+      fi
     fi
   else
     echo_err "Sample config not found online or in archive; skipping config install."
@@ -243,3 +277,7 @@ if $add_alias; then
 fi
 
 # Cleanup handled by trap
+}
+
+# Execute main with passed arguments
+main "$@"
