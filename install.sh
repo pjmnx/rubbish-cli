@@ -15,7 +15,9 @@ APP_NAME="rubbish"
 PREFIX="$HOME/.local"
 BIN_DIR="$PREFIX/bin"
 ETC_DIR="/etc/rubbish"
-CONFIG_TARGET="$ETC_DIR/config.cfg"
+# Default config target is the user config in their home. When installing with --sudo
+# and not using --user-config, the installer will switch to the system config path.
+CONFIG_TARGET="$HOME/.config/rubbish.cfg"
 CHANNEL="stable"   # stable|pre
 VERSION=""         # empty -> latest
 
@@ -28,7 +30,7 @@ Options:
   --pre               Use latest pre-release (alpha/beta) instead of stable.
   --prefix <dir>      Install prefix (default: ${PREFIX}). Binary goes to <prefix>/bin.
   --bin-dir <dir>     Install binary to directory (overrides --prefix path).
-  --etc-dir <dir>     Config directory (default: ${ETC_DIR}).
+  --etc-dir <dir>     Config directory (default: ${ETC_DIR}; note default config target is ${CONFIG_TARGET}).
   --user-config       Install config to user home (~/.config/rubbish.cfg) instead of /etc.
   --no-alias          Do not add shell alias: toss='rubbish toss'.
   --sudo              Force using sudo (even for user-local installs).
@@ -50,41 +52,6 @@ dryrun=false
 use_sudo=false
 user_config=false
 add_alias=true
-
-main() {
-  # Parse args
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --version) VERSION="$2"; shift 2 ;;
-      --pre) CHANNEL="pre"; shift ;;
-      --prefix) PREFIX="$2"; BIN_DIR="$PREFIX/bin"; shift 2 ;;
-      --bin-dir) BIN_DIR="$2"; shift 2 ;;
-      --etc-dir) ETC_DIR="$2"; CONFIG_TARGET="$ETC_DIR/config.cfg"; shift 2 ;;
-      --user-config) user_config=true; shift ;;
-    --no-alias) add_alias=false; shift ;;
-      --sudo) use_sudo=true; shift ;;
-      --dry-run) dryrun=true; shift ;;
-      -h|--help) usage; exit 0 ;;
-      *) echo_err "Unknown option: $1"; usage; exit 1 ;;
-    esac
-  done
-
-  SUDO=""
-  # If the target bin dir is inside the user's home, don't use sudo
-  if [[ "$BIN_DIR" == "$HOME"* ]]; then
-    use_sudo=false
-  fi
-  if $use_sudo; then
-    if [[ $EUID -ne 0 ]]; then
-      SUDO="sudo"
-    fi
-  fi
-
-# Requirements
-require uname
-require mktemp
-require tar
-require curl
 
 # Add shell alias: toss => 'rubbish toss'
 add_aliases() {
@@ -146,21 +113,6 @@ add_aliases() {
   fi
 }
 
-# Detect OS/ARCH mapping to Go tuples
-OS="$(uname -s)"
-ARCH="$(uname -m)"
-case "$OS" in
-  Linux)  GOOS="linux" ;;
-  Darwin) GOOS="darwin" ;;
-  *) echo_err "Unsupported OS: $OS"; exit 1 ;;
-esac
-case "$ARCH" in
-  x86_64|amd64) GOARCH="amd64" ;;
-  aarch64|arm64) GOARCH="arm64" ;;
-  i386|i686) GOARCH="386" ;;
-  *) echo_err "Unsupported ARCH: $ARCH"; exit 1 ;;
-esac
-
 # Resolve version and asset base name
 select_latest() {
   local url="https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases"
@@ -171,137 +123,280 @@ select_latest() {
   fi
 }
 
-if [[ -z "$VERSION" ]]; then
-  echo_step "Resolving latest ${CHANNEL} version"
-  VERSION="$(select_latest)"
-  if [[ -z "$VERSION" ]]; then echo_err "Could not determine latest release"; exit 1; fi
-fi
+# Ensure BIN_DIR is in the invoking user's PATH; append to shell rc if needed
+ensure_bin_in_path() {
+  local user_name user_home shell_name rc_file
+  user_name="${SUDO_USER:-$USER}"
+  user_home=$(eval echo "~$user_name")
+  shell_name="${SHELL##*/}"
 
-BASE="${APP_NAME}_${VERSION}_${GOOS}_${GOARCH}"
-TARBALL="${BASE}.tar.gz"
-DL_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${VERSION}/${TARBALL}"
-PAGES_SAMPLE_URL="https://${REPO_OWNER}.github.io/${REPO_NAME}/sample.rubbigsh.cfg"
-PAGES_SAMPLE_URL_ALT="https://${REPO_OWNER}.github.io/${REPO_NAME}/sample.rubbish.cfg"
-SAMPLE_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${VERSION}/sample.rubbish.cfg"
-SAMPLE_URL_ALT="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${VERSION}/sample.rubbigsh.cfg"
-
-# Prepare temp dir
-WORKDIR="$(mktemp -d)"
-trap 'rm -rf "$WORKDIR"' EXIT
-cd "$WORKDIR"
-
-echo_step "Downloading ${TARBALL}"
-if $dryrun; then echo "curl -fL -o ${TARBALL} ${DL_URL}"; else curl -fL -o "$TARBALL" "$DL_URL"; fi
-
-echo_step "Extracting archive"
-if $dryrun; then echo "tar -xzf ${TARBALL}"; else tar -xzf "$TARBALL"; fi
-
-# Find extracted folder (could be current dir contents)
-if [[ -d "${BASE}" ]]; then SRC_DIR="${BASE}"; else SRC_DIR="."; fi
-
-# Install binary
-echo_step "Installing binary to ${BIN_DIR}"
-if $dryrun; then
-  if [[ -n "$SUDO" ]]; then
-    echo "$SUDO mkdir -p \"$BIN_DIR\""
-    echo "$SUDO install -m 0755 \"$SRC_DIR/${APP_NAME}\" \"$BIN_DIR/${APP_NAME}\""
-  else
-    echo "mkdir -p \"$BIN_DIR\""
-    echo "install -m 0755 \"$SRC_DIR/${APP_NAME}\" \"$BIN_DIR/${APP_NAME}\""
-  fi
-else
-  if [[ -n "$SUDO" ]]; then
-    $SUDO mkdir -p "$BIN_DIR"
-    $SUDO install -m 0755 "$SRC_DIR/${APP_NAME}" "$BIN_DIR/${APP_NAME}"
-  else
-    mkdir -p "$BIN_DIR"
-    install -m 0755 "$SRC_DIR/${APP_NAME}" "$BIN_DIR/${APP_NAME}"
-  fi
-fi
-
-# Install config
-if $user_config; then
-  CONFIG_TARGET="$HOME/.config/rubbish.cfg"
-  CONFIG_DIR="$(dirname "$CONFIG_TARGET")"
-else
-  CONFIG_DIR="$ETC_DIR"
-fi
-
-echo_step "Installing sample config to ${CONFIG_TARGET} (won't overwrite existing)"
-# Prefer GitHub Pages-hosted sample config first (skip network in dry-run)
-SRC_CFG=""
-if ! $dryrun; then
-  for url in "$PAGES_SAMPLE_URL" "$PAGES_SAMPLE_URL_ALT"; do
-    if curl -fsI "$url" >/dev/null 2>&1; then
-      echo_step "Downloading sample config from Pages: $url"
-      curl -fsSL -o sample.cfg "$url"
-      SRC_CFG="sample.cfg"
-      break
+  # If BIN_DIR already in current PATH, nothing to do
+  IFS=':' read -ra _path_elems <<< "$PATH"
+  for p in "${_path_elems[@]}"; do
+    if [[ "$p" == "$BIN_DIR" ]]; then
+      echo_step "${BIN_DIR} already in PATH"
+      return 0
     fi
   done
-fi
-if [[ -z "$SRC_CFG" ]] && ! $dryrun; then
-  # Fallback to release asset(s)
-  for url in "$SAMPLE_URL" "$SAMPLE_URL_ALT"; do
-    if curl -fsI "$url" >/dev/null 2>&1; then
-      echo_step "Downloading sample config from Release: $url"
-      curl -fsSL -o sample.cfg "$url"
-      SRC_CFG="sample.cfg"
-      break
-    fi
-  done
-fi
-if [[ -z "$SRC_CFG" ]]; then
-  # Final fallback to any sample inside the archive
-  if [[ -f "$SRC_DIR/sample.rubbish.cfg" ]]; then
-    SRC_CFG="$SRC_DIR/sample.rubbish.cfg"
-  elif [[ -f "$SRC_DIR/sample.rubbigsh.cfg" ]]; then
-    SRC_CFG="$SRC_DIR/sample.rubbigsh.cfg"
-  fi
-fi
 
-if $dryrun; then
-  if [[ -n "$SUDO" && "$user_config" != true ]]; then
-    echo "$SUDO mkdir -p \"$CONFIG_DIR\""
-    echo "$SUDO cp -n \"$SRC_CFG\" \"$CONFIG_TARGET\" || true"
-  else
-    echo "mkdir -p \"$CONFIG_DIR\""
-    echo "cp -n \"$SRC_CFG\" \"$CONFIG_TARGET\" || true"
+  case "$shell_name" in
+    zsh) rc_file="$user_home/.zshrc" ;;
+    bash)
+      rc_file="$user_home/.bashrc"
+      if [[ "$(uname -s)" == "Darwin" ]] && [[ -f "$user_home/.bash_profile" ]]; then
+        rc_file="$user_home/.bash_profile"
+      fi
+      ;;
+    fish)
+      rc_file="$user_home/.config/fish/config.fish"
+      ;;
+    *) rc_file="$user_home/.profile" ;;
+  esac
+
+  # If rc file already contains BIN_DIR, assume user will get it on next login
+  if [[ -f "$rc_file" ]] && grep -Fq "$BIN_DIR" "$rc_file"; then
+    echo_step "${BIN_DIR} already configured in $rc_file"
+    return 0
   fi
-else
-  if [[ -n "$SUDO" && "$user_config" != true ]]; then
-    $SUDO mkdir -p "$CONFIG_DIR"
-  else
-    mkdir -p "$CONFIG_DIR"
-  fi
-  if [[ -n "$SRC_CFG" && -f "$SRC_CFG" ]]; then
-    if $user_config; then
-      cp -n "$SRC_CFG" "$CONFIG_TARGET" || true
+
+  if $dryrun; then
+    if [[ "$shell_name" == "fish" ]]; then
+      echo "Would append to $rc_file: set -gx PATH \"$BIN_DIR\" \$PATH"
     else
-      if [[ -n "$SUDO" ]]; then
-        $SUDO cp -n "$SRC_CFG" "$CONFIG_TARGET" || true
+      echo "Would append to $rc_file: export PATH=\"$BIN_DIR:\$PATH\""
+    fi
+    return 0
+  fi
+
+  mkdir -p "$(dirname "$rc_file")"
+  {
+    echo
+    echo "# Added by rubbish installer on $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+    if [[ "$shell_name" == "fish" ]]; then
+      echo "set -gx PATH \"$BIN_DIR\" \$PATH"
+    else
+      echo "export PATH=\"$BIN_DIR:\$PATH\""
+    fi
+  } >> "$rc_file"
+
+  echo_step "Appended PATH update to $rc_file. Reload your shell or run: source \"$rc_file\""
+}
+
+main() {
+  # Parse args
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --version) VERSION="$2"; shift 2 ;;
+      --pre) CHANNEL="pre"; shift ;;
+      --prefix) PREFIX="$2"; BIN_DIR="$PREFIX/bin"; shift 2 ;;
+      --bin-dir) BIN_DIR="$2"; shift 2 ;;
+      --etc-dir) ETC_DIR="$2"; CONFIG_TARGET="$ETC_DIR/config.cfg"; shift 2 ;;
+      --user-config) user_config=true; shift ;;
+    --no-alias) add_alias=false; shift ;;
+      --sudo) use_sudo=true; shift ;;
+      --dry-run) dryrun=true; shift ;;
+      -h|--help) usage; exit 0 ;;
+      *) echo_err "Unknown option: $1"; usage; exit 1 ;;
+    esac
+  done
+
+  SUDO=""
+  # If the target bin dir is inside the user's home, don't use sudo
+  if [[ "$BIN_DIR" == "$HOME"* ]]; then
+    use_sudo=false
+  fi
+  if $use_sudo; then
+    if [[ $EUID -ne 0 ]]; then
+      SUDO="sudo"
+    fi
+  fi
+
+  # When --sudo is requested, switch defaults to system-wide locations unless
+  # the user explicitly provided overrides (--prefix/--bin-dir/--etc-dir/--user-config).
+  if $use_sudo; then
+    # If prefix/bin-dir were left as the user-default, promote to /usr/local
+    if [[ "$PREFIX" == "$HOME/.local" ]]; then
+      PREFIX="/usr/local"
+      BIN_DIR="$PREFIX/bin"
+    fi
+    # If the user did not request a user config, and didn't override --etc-dir,
+    # use the system config path under /etc/config/rubbish.cfg per new behavior.
+    if ! $user_config && [[ "$ETC_DIR" == "/etc/rubbish" ]]; then
+      CONFIG_TARGET="/etc/config/rubbish.cfg"
+    else
+      # If ETC_DIR was overridden via --etc-dir, honor it
+      CONFIG_TARGET="$ETC_DIR/config.cfg"
+    fi
+  else
+    # Non-sudo installs default to user config unless --etc-dir explicitly provided
+    if $user_config; then
+      CONFIG_TARGET="$HOME/.config/rubbish.cfg"
+    else
+      CONFIG_TARGET="$HOME/.config/rubbish.cfg"
+    fi
+  fi
+
+  # Requirements
+  require uname
+  require mktemp
+  require tar
+  require curl
+
+  # Detect OS/ARCH mapping to Go tuples
+  OS="$(uname -s)"
+  ARCH="$(uname -m)"
+  case "$OS" in
+    Linux)  GOOS="linux" ;;
+    Darwin) GOOS="darwin" ;;
+    *) echo_err "Unsupported OS: $OS"; exit 1 ;;
+  esac
+  case "$ARCH" in
+    x86_64|amd64) GOARCH="amd64" ;;
+    aarch64|arm64) GOARCH="arm64" ;;
+    i386|i686) GOARCH="386" ;;
+    *) echo_err "Unsupported ARCH: $ARCH"; exit 1 ;;
+  esac
+
+  if [[ -z "$VERSION" ]]; then
+    echo_step "Resolving latest ${CHANNEL} version"
+    VERSION="$(select_latest)"
+    if [[ -z "$VERSION" ]]; then echo_err "Could not determine latest release"; exit 1; fi
+  fi
+
+  BASE="${APP_NAME}_${VERSION}_${GOOS}_${GOARCH}"
+  TARBALL="${BASE}.tar.gz"
+  DL_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${VERSION}/${TARBALL}"
+  PAGES_SAMPLE_URL="https://${REPO_OWNER}.github.io/${REPO_NAME}/sample.rubbigsh.cfg"
+  PAGES_SAMPLE_URL_ALT="https://${REPO_OWNER}.github.io/${REPO_NAME}/sample.rubbish.cfg"
+  SAMPLE_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${VERSION}/sample.rubbish.cfg"
+  SAMPLE_URL_ALT="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${VERSION}/sample.rubbigsh.cfg"
+
+  # Prepare temp dir
+  WORKDIR="$(mktemp -d)"
+  trap 'rm -rf "$WORKDIR"' EXIT
+  cd "$WORKDIR"
+
+  echo_step "Downloading ${TARBALL}"
+  if $dryrun; then echo "curl -fL -o ${TARBALL} ${DL_URL}"; else curl -fL -o "$TARBALL" "$DL_URL"; fi
+
+  echo_step "Extracting archive"
+  if $dryrun; then echo "tar -xzf ${TARBALL}"; else tar -xzf "$TARBALL"; fi
+
+  # Find extracted folder (could be current dir contents)
+  if [[ -d "${BASE}" ]]; then SRC_DIR="${BASE}"; else SRC_DIR="."; fi
+
+  # Install binary
+  echo_step "Installing binary to ${BIN_DIR}"
+  if $dryrun; then
+    if [[ -n "$SUDO" ]]; then
+      echo "$SUDO mkdir -p \"$BIN_DIR\""
+      echo "$SUDO install -m 0755 \"$SRC_DIR/${APP_NAME}\" \"$BIN_DIR/${APP_NAME}\""
+    else
+      echo "mkdir -p \"$BIN_DIR\""
+      echo "install -m 0755 \"$SRC_DIR/${APP_NAME}\" \"$BIN_DIR/${APP_NAME}\""
+    fi
+  else
+    if [[ -n "$SUDO" ]]; then
+      $SUDO mkdir -p "$BIN_DIR"
+      $SUDO install -m 0755 "$SRC_DIR/${APP_NAME}" "$BIN_DIR/${APP_NAME}"
+    else
+      mkdir -p "$BIN_DIR"
+      install -m 0755 "$SRC_DIR/${APP_NAME}" "$BIN_DIR/${APP_NAME}"
+    fi
+  fi
+
+  # Install config
+  if $user_config; then
+    CONFIG_TARGET="$HOME/.config/rubbish.cfg"
+    CONFIG_DIR="$(dirname "$CONFIG_TARGET")"
+  else
+    CONFIG_DIR="$ETC_DIR"
+  fi
+
+  echo_step "Installing sample config to ${CONFIG_TARGET} (won't overwrite existing)"
+  # Prefer GitHub Pages-hosted sample config first (skip network in dry-run)
+  SRC_CFG=""
+  if ! $dryrun; then
+    for url in "$PAGES_SAMPLE_URL" "$PAGES_SAMPLE_URL_ALT"; do
+      if curl -fsI "$url" >/dev/null 2>&1; then
+        echo_step "Downloading sample config from Pages: $url"
+        curl -fsSL -o sample.cfg "$url"
+        SRC_CFG="sample.cfg"
+        break
+      fi
+    done
+  fi
+  if [[ -z "$SRC_CFG" ]] && ! $dryrun; then
+    # Fallback to release asset(s)
+    for url in "$SAMPLE_URL" "$SAMPLE_URL_ALT"; do
+      if curl -fsI "$url" >/dev/null 2>&1; then
+        echo_step "Downloading sample config from Release: $url"
+        curl -fsSL -o sample.cfg "$url"
+        SRC_CFG="sample.cfg"
+        break
+      fi
+    done
+  fi
+  if [[ -z "$SRC_CFG" ]]; then
+    # Final fallback to any sample inside the archive
+    if [[ -f "$SRC_DIR/sample.rubbish.cfg" ]]; then
+      SRC_CFG="$SRC_DIR/sample.rubbish.cfg"
+    elif [[ -f "$SRC_DIR/sample.rubbigsh.cfg" ]]; then
+      SRC_CFG="$SRC_DIR/sample.rubbigsh.cfg"
+    fi
+  fi
+
+  if $dryrun; then
+    if [[ -f "$CONFIG_TARGET" ]]; then
+      echo "Would skip installing config; $CONFIG_TARGET already exists"
+    else
+      if [[ -n "$SUDO" && "$user_config" != true ]]; then
+        echo "$SUDO mkdir -p \"$CONFIG_DIR\""
+        echo "$SUDO cp -n \"$SRC_CFG\" \"$CONFIG_TARGET\" || true"
       else
-        cp -n "$SRC_CFG" "$CONFIG_TARGET" || true
+        echo "mkdir -p \"$CONFIG_DIR\""
+        echo "cp -n \"$SRC_CFG\" \"$CONFIG_TARGET\" || true"
       fi
     fi
   else
-    echo_err "Sample config not found online or in archive; skipping config install."
-    echo "You can place one later at: $CONFIG_TARGET"
+    if [[ -f "$CONFIG_TARGET" ]]; then
+      echo_step "Config already exists at $CONFIG_TARGET; skipping config install."
+    else
+      if [[ -n "$SUDO" && "$user_config" != true ]]; then
+        $SUDO mkdir -p "$CONFIG_DIR"
+      else
+        mkdir -p "$CONFIG_DIR"
+      fi
+      if [[ -n "$SRC_CFG" && -f "$SRC_CFG" ]]; then
+        if $user_config; then
+          cp -n "$SRC_CFG" "$CONFIG_TARGET" || true
+        else
+          if [[ -n "$SUDO" ]]; then
+            $SUDO cp -n "$SRC_CFG" "$CONFIG_TARGET" || true
+          else
+            cp -n "$SRC_CFG" "$CONFIG_TARGET" || true
+          fi
+        fi
+      else
+        echo_err "Sample config not found online or in archive; skipping config install."
+        echo "You can place one later at: $CONFIG_TARGET"
+      fi
+    fi
   fi
-fi
 
-echo_step "Installation complete"
-if command -v "$APP_NAME" >/dev/null 2>&1; then
-  echo "$APP_NAME version: $($APP_NAME --version 2>/dev/null || true)"
-  echo "Binary: $(command -v $APP_NAME)"
-fi
+  echo_step "Installation complete"
+  if command -v "$APP_NAME" >/dev/null 2>&1; then
+    echo "$APP_NAME version: $($APP_NAME --version 2>/dev/null || true)"
+    echo "Binary: $(command -v $APP_NAME)"
+  fi
 
-# Add convenient 'toss' alias unless disabled
-if $add_alias; then
-  add_aliases || true
-fi
+  # Add convenient 'toss' alias unless disabled
+  if $add_alias; then
+    add_aliases || true
+  fi
 
-# Cleanup handled by trap
+  # Ensure bin dir is on PATH for the user
+  ensure_bin_in_path || true
 }
 
 # Execute main with passed arguments
